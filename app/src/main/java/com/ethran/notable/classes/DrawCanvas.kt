@@ -120,54 +120,50 @@ class DrawCanvas(
 
         override fun onRawDrawingTouchPointListReceived(plist: TouchPointList) {
             val startTime = System.currentTimeMillis()
-            // sometimes UI will get refreshed and frozen before we draw all the strokes.
-            // I think, its because of doing it in separate thread. Commented it for now, to
-            // observe app behavior, and determine if it fixed this bug,
-            // as I do not know reliable way to reproduce it
-            // Need testing if it will be better to do in main thread on, in separate.
-            // thread(start = true, isDaemon = false, priority = Thread.MAX_PRIORITY) {
+            val minPressure = 50f
+
+            // Log all points with metadata
+            plist.points.forEachIndexed { idx, pt ->
+                Log.d(TAG, "Raw Point $idx: x=${pt.x}, y=${pt.y}, pressure=${pt.pressure}, tiltX=${pt.tiltX}, tiltY=${pt.tiltY}, timestamp=${pt.timestamp}")
+            }
+
+            // Filter, handling nullable pressure
+            val filteredPoints = plist.points.filter { (it.pressure ?: 0f) >= minPressure }
+
+            // Log filtered points
+            filteredPoints.forEachIndexed { idx, pt ->
+                Log.d(TAG, "Filtered Point $idx: x=${pt.x}, y=${pt.y}, pressure=${pt.pressure}, tiltX=${pt.tiltX}, tiltY=${pt.tiltY}, timestamp=${pt.timestamp}")
+            }
+
+            if (filteredPoints.isEmpty()) {
+                Log.d(TAG, "No points above pressure threshold ($minPressure)")
+                return
+            }
 
             if (getActualState().mode == Mode.Draw) {
-//                val newThread = System.currentTimeMillis()
-//                Log.d(TAG,"Got to new thread ${Thread.currentThread().name}, in ${newThread - startTime}}")
                 coroutineScope.launch(Dispatchers.Main.immediate) {
-                    // After each stroke ends, we draw it on our canvas.
-                    // This way, when screen unfreezes the strokes are shown.
-                    // When in scribble mode, ui want be refreshed.
-                    // If we UI will be refreshed and frozen before we manage to draw
-                    // strokes want be visible, so we need to ensure that it will be done
-                    // before anything else happens.
                     drawingInProgress.withLock {
                         val lock = System.currentTimeMillis()
                         Log.d(TAG, "lock obtained in ${lock - startTime} ms")
-
-//                        Thread.sleep(1000)
                         handleDraw(
                             this@DrawCanvas.page,
                             strokeHistoryBatch,
                             getActualState().penSettings[getActualState().pen.penName]!!.strokeSize,
                             getActualState().penSettings[getActualState().pen.penName]!!.color,
                             getActualState().pen,
-                            plist.points
+                            filteredPoints
                         )
-//                        val drawEndTime = System.currentTimeMillis()
-//                        Log.d(TAG, "Drawing operation took ${drawEndTime - startTime} ms")
-
                     }
                     coroutineScope.launch {
                         commitHistorySignal.emit(Unit)
                     }
-
-//                    val endTime = System.currentTimeMillis()
-//                    Log.d(TAG,"onRawDrawingTouchPointListReceived completed in ${endTime - startTime} ms")
-
                 }
             } else thread {
                 if (getActualState().mode == Mode.Erase) {
                     handleErase(
                         this@DrawCanvas.page,
                         history,
-                        plist.points.map { SimplePointF(it.x, it.y + page.scroll) },
+                        filteredPoints.map { SimplePointF(it.x, it.y + page.scroll) },
                         eraser = getActualState().eraser
                     )
                     drawCanvasToView()
@@ -179,26 +175,23 @@ class DrawCanvas(
                         coroutineScope,
                         this@DrawCanvas.page,
                         getActualState(),
-                        plist.points.map { SimplePointF(it.x, it.y + page.scroll) })
+                        filteredPoints.map { SimplePointF(it.x, it.y + page.scroll) })
                     drawCanvasToView()
                     refreshUi()
                 }
 
                 if (getActualState().mode == Mode.Line) {
-                    // draw line
                     handleLine(
                         page = this@DrawCanvas.page,
                         historyBucket = strokeHistoryBatch,
                         strokeSize = getActualState().penSettings[getActualState().pen.penName]!!.strokeSize,
                         color = getActualState().penSettings[getActualState().pen.penName]!!.color,
                         pen = getActualState().pen,
-                        touchPoints = plist.points
+                        touchPoints = filteredPoints
                     )
-                    //make it visible
                     drawCanvasToView()
                     refreshUi()
                 }
-
             }
         }
 

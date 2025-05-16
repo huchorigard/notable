@@ -50,17 +50,7 @@ fun PenToolbarButton(
                 onChange = { onChangeSetting(it) },
                 onClose = { isStrokeMenuOpen = false },
                 sizeOptions = sizes,
-                colorOptions =  listOf(
-                    Color.Red,
-                    Color.Green,
-                    Color.Blue,
-                    Color.Cyan,
-                    Color.Magenta,
-                    Color.Yellow,
-                    Color.Gray,
-                    Color.DarkGray,
-                    Color.Black,
-                )
+                colorOptions = emptyList()
             )
         }
     }
