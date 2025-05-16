@@ -63,6 +63,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.ethran.notable.utils.chunkStrokesForDigitalInk
 import com.ethran.notable.utils.recognizeDigitalInkInChunks
+import com.ethran.notable.utils.recognizeDigitalInkOnPage
+import com.ethran.notable.utils.storeRecognizedTextResult
 
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -248,26 +250,19 @@ fun EditorView(
                                 System.out.println("[HandwritingRecognition] No strokes to recognize on FAB click.")
                                 return@launch
                             }
-                            val chunks = chunkStrokesForDigitalInk(strokes)
-                            Log.i("HandwritingRecognition", "Chunking complete: ${chunks.size} chunks to process.")
-                            System.out.println("[HandwritingRecognition] Chunking complete: ${chunks.size} chunks to process.")
-                            val recognizedChunks = recognizeDigitalInkInChunks(context, chunks)
-                            // Log recognized text output for each chunk
-                            recognizedChunks.forEach { (chunkIndex, text) ->
-                                Log.i("HandwritingRecognition", "Recognized text for chunk $chunkIndex: $text")
-                                System.out.println("[HandwritingRecognition] Recognized text for chunk $chunkIndex: $text")
-                            }
+                            val recognizedText = recognizeDigitalInkOnPage(context, strokes)
+                            Log.i("HandwritingRecognition", "Recognized text: $recognizedText")
+                            System.out.println("[HandwritingRecognition] Recognized text: $recognizedText")
                             val db = AppDatabase.getDatabase(context)
-                            storeRecognizedTextResults(db.recognizedTextDao(), noteId, pageId, recognizedChunks)
-                            val failed = recognizedChunks.any { it.second == "[Recognition failed]" }
-                            if (failed) {
-                                Toast.makeText(context, "Some chunks failed to recognize", Toast.LENGTH_LONG).show()
-                                Log.i("HandwritingRecognition", "Some chunks failed to recognize.")
-                                System.out.println("[HandwritingRecognition] Some chunks failed to recognize.")
+                            storeRecognizedTextResult(db.recognizedTextDao(), noteId, pageId, recognizedText)
+                            if (recognizedText == "[Recognition failed]") {
+                                Toast.makeText(context, "Recognition failed", Toast.LENGTH_LONG).show()
+                                Log.i("HandwritingRecognition", "Recognition failed.")
+                                System.out.println("[HandwritingRecognition] Recognition failed.")
                             } else {
                                 Toast.makeText(context, "Recognition complete!", Toast.LENGTH_SHORT).show()
-                                Log.i("HandwritingRecognition", "Recognition complete and successful for all chunks.")
-                                System.out.println("[HandwritingRecognition] Recognition complete and successful for all chunks.")
+                                Log.i("HandwritingRecognition", "Recognition complete and successful.")
+                                System.out.println("[HandwritingRecognition] Recognition complete and successful.")
                             }
                         } catch (e: Exception) {
                             Log.e("HandwritingRecognition", "Exception in FAB handler", e)

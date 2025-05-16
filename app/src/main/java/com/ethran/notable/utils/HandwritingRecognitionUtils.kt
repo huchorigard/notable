@@ -152,4 +152,69 @@ suspend fun storeRecognizedTextResults(
         )
         recognizedTextDao.insert(recognizedText)
     }
+}
+
+/**
+ * Recognize all strokes on a page as a single Ink using Digital Ink Recognition.
+ * Returns the recognized text or an error string.
+ */
+suspend fun recognizeDigitalInkOnPage(
+    context: Context,
+    strokes: List<Stroke>,
+    logTag: String = "HandwritingRecognition"
+): String {
+    val modelIdentifier = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en-US")
+    if (modelIdentifier == null) {
+        Log.e(logTag, "Could not get model identifier for en-US")
+        return "[Model error]"
+    }
+    val model = DigitalInkRecognitionModel.builder(modelIdentifier).build()
+    val recognizer = DigitalInkRecognition.getClient(
+        DigitalInkRecognizerOptions.builder(model).build()
+    )
+    // Download model if needed
+    try {
+        val remoteModelManager = com.google.mlkit.common.model.RemoteModelManager.getInstance()
+        val isDownloaded = remoteModelManager.isModelDownloaded(model).await()
+        if (!isDownloaded) {
+            remoteModelManager.download(model, com.google.mlkit.common.model.DownloadConditions.Builder().build()).await()
+            Log.i(logTag, "Model downloaded for en-US")
+        }
+    } catch (e: Exception) {
+        Log.e(logTag, "Failed to download/check model", e)
+        return "[Model download error]"
+    }
+    return try {
+        val ink = strokesToInk(strokes)
+        val result = recognizer.recognize(ink).await()
+        val text = result.candidates.firstOrNull()?.text ?: ""
+        Log.i(logTag, "Recognized text: $text")
+        text
+    } catch (e: Exception) {
+        Log.e(logTag, "Recognition failed", e)
+        "[Recognition failed]"
+    }
+}
+
+/**
+ * Stores recognized text result in the database, overwriting previous results for the same note and page.
+ * Only stores a single result (chunkIndex = 0).
+ */
+suspend fun storeRecognizedTextResult(
+    recognizedTextDao: RecognizedTextDao,
+    noteId: String,
+    pageId: String,
+    recognizedText: String
+) {
+    // Delete previous results for this note and page
+    recognizedTextDao.deleteByNoteAndPage(noteId, pageId)
+    // Insert new result
+    val result = RecognizedText(
+        noteId = noteId,
+        pageId = pageId,
+        chunkIndex = 0,
+        recognizedText = recognizedText,
+        updatedAt = Date()
+    )
+    recognizedTextDao.insert(result)
 } 

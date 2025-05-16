@@ -55,9 +55,8 @@ import compose.icons.feathericons.EyeOff
 import io.shipbook.shipbooksdk.Log
 import kotlinx.coroutines.launch
 import com.ethran.notable.db.AppDatabase
-import com.ethran.notable.utils.chunkStrokesForDigitalInk
-import com.ethran.notable.utils.recognizeDigitalInkInChunks
-import com.ethran.notable.utils.storeRecognizedTextResults
+import com.ethran.notable.utils.recognizeDigitalInkOnPage
+import com.ethran.notable.utils.storeRecognizedTextResult
 import android.widget.Toast
 
 fun presentlyUsedToolIcon(mode: Mode, pen: Pen): Int {
@@ -380,13 +379,11 @@ fun Toolbar(
                             val pageId = state.pageId
                             val strokes = state.pageView.strokes
                             if (noteId != null && strokes.isNotEmpty()) {
-                                val chunks = chunkStrokesForDigitalInk(strokes)
-                                val recognizedChunks = recognizeDigitalInkInChunks(context, chunks)
-                                val db = AppDatabase.getDatabase(context)
-                                storeRecognizedTextResults(db.recognizedTextDao(), noteId, pageId, recognizedChunks)
-                                val failed = recognizedChunks.any { it.second == "[Recognition failed]" }
-                                if (failed) {
-                                    Toast.makeText(context, "Some chunks failed to recognize", Toast.LENGTH_LONG).show()
+                                val recognizedText = recognizeDigitalInkOnPage(context, strokes)
+                                Log.i("HandwritingRecognition", "Recognized text: $recognizedText")
+                                storeRecognizedTextResult(AppDatabase.getDatabase(context).recognizedTextDao(), noteId, pageId, recognizedText)
+                                if (recognizedText == "[Recognition failed]") {
+                                    Toast.makeText(context, "Recognition failed", Toast.LENGTH_LONG).show()
                                 }
                             }
                             navController.navigate("library") // Navigate to main library
