@@ -8,23 +8,25 @@ import com.ethran.notable.db.Stroke
 import com.ethran.notable.db.StrokePoint
 import android.content.Context
 import android.util.Log
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.tasks.await
 import com.ethran.notable.db.RecognizedText
 import com.ethran.notable.db.RecognizedTextDao
 import java.util.Date
+import com.google.mlkit.vision.digitalink.DigitalInkRecognitionModelIdentifier
+import com.google.mlkit.vision.digitalink.DigitalInkRecognitionModel
+import com.google.mlkit.vision.digitalink.DigitalInkRecognizerOptions
+import com.google.mlkit.vision.digitalink.DigitalInkRecognition
+import com.google.mlkit.vision.digitalink.Ink
 
 /**
  * Splits the bounding box of all strokes into 1024x1024 px tiles,
- * and renders the strokes into each tile as a bitmap.
- * Returns a list of Pair(chunkIndex, Bitmap).
+ * and groups the strokes into each tile as a chunk.
+ * Returns a list of Pair(chunkIndex, List<Stroke>).
  */
-fun renderStrokesToChunks(
+fun chunkStrokesForDigitalInk(
     strokes: List<Stroke>,
     chunkSize: Int = 1024
-): List<Pair<Int, Bitmap>> {
+): List<Pair<Int, List<Stroke>>> {
     if (strokes.isEmpty()) return emptyList()
 
     // Compute the bounding box of all strokes
@@ -40,7 +42,7 @@ fun renderStrokesToChunks(
     val numChunksX = Math.ceil(width / chunkSize.toDouble()).toInt().coerceAtLeast(1)
     val numChunksY = Math.ceil(height / chunkSize.toDouble()).toInt().coerceAtLeast(1)
 
-    val chunks = mutableListOf<Pair<Int, Bitmap>>()
+    val chunks = mutableListOf<Pair<Int, List<Stroke>>>()
     var chunkIndex = 0
     for (yChunk in 0 until numChunksY) {
         for (xChunk in 0 until numChunksX) {
@@ -50,64 +52,74 @@ fun renderStrokesToChunks(
             val bottom = top + chunkSize
             val tileRect = RectF(left, top, right, bottom)
 
-            // Create a blank bitmap for this chunk
-            val bitmap = Bitmap.createBitmap(chunkSize, chunkSize, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-
-            // Draw strokes that intersect this tile
-            for (stroke in strokes) {
-                val pointsInTile = stroke.points.filter { p ->
+            // Select strokes that intersect this tile
+            val strokesInTile = strokes.filter { stroke ->
+                stroke.points.any { p ->
                     p.x >= tileRect.left && p.x < tileRect.right &&
                     p.y >= tileRect.top && p.y < tileRect.bottom
                 }
-                if (pointsInTile.size >= 2) {
-                    for (i in 0 until pointsInTile.size - 1) {
-                        val p1 = pointsInTile[i]
-                        val p2 = pointsInTile[i + 1]
-                        canvas.drawLine(
-                            p1.x - tileRect.left,
-                            p1.y - tileRect.top,
-                            p2.x - tileRect.left,
-                            p2.y - tileRect.top,
-                            stroke.toPaint()
-                        )
-                    }
-                }
             }
-            chunks.add(chunkIndex to bitmap)
+            if (strokesInTile.isNotEmpty()) {
+                chunks.add(chunkIndex to strokesInTile)
+            }
             chunkIndex++
         }
     }
     return chunks
 }
 
-// Helper to convert a Stroke to a Paint object for drawing
-fun Stroke.toPaint(): Paint {
-    val paint = Paint()
-    paint.color = this.color
-    paint.strokeWidth = this.size
-    paint.style = Paint.Style.STROKE
-    paint.isAntiAlias = true
-    paint.strokeCap = Paint.Cap.ROUND
-    return paint
+/**
+ * Converts a list of Stroke to an ML Kit Ink object.
+ */
+fun strokesToInk(strokes: List<Stroke>): Ink {
+    val inkBuilder = Ink.builder()
+    for (stroke in strokes) {
+        val strokeBuilder = Ink.Stroke.builder()
+        for (point in stroke.points) {
+            // Use x, y, and timestamp (if available)
+            strokeBuilder.addPoint(Ink.Point.create(point.x, point.y, point.timestamp))
+        }
+        inkBuilder.addStroke(strokeBuilder.build())
+    }
+    return inkBuilder.build()
 }
 
 /**
- * Runs ML Kit text recognition on each bitmap chunk and returns a list of recognized texts.
+ * Runs ML Kit Digital Ink recognition on each chunk and returns a list of recognized texts.
  * Each result is a Pair(chunkIndex, recognizedText).
  */
-suspend fun recognizeTextInChunks(
+suspend fun recognizeDigitalInkInChunks(
     context: Context,
-    chunks: List<Pair<Int, Bitmap>>,
+    chunks: List<Pair<Int, List<Stroke>>>,
     logTag: String = "HandwritingRecognition"
 ): List<Pair<Int, String>> {
-    val recognizer = TextRecognition.getClient(TextRecognizerOptions.Builder().build())
     val results = mutableListOf<Pair<Int, String>>()
-    for ((chunkIndex, bitmap) in chunks) {
+    val modelIdentifier = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en-US")
+    if (modelIdentifier == null) {
+        Log.e(logTag, "Could not get model identifier for en-US")
+        return chunks.map { it.first to "[Model error]" }
+    }
+    val model = DigitalInkRecognitionModel.builder(modelIdentifier).build()
+    val recognizer = DigitalInkRecognition.getClient(
+        DigitalInkRecognizerOptions.builder(model).build()
+    )
+    // Download model if needed
+    try {
+        val remoteModelManager = com.google.mlkit.common.model.RemoteModelManager.getInstance()
+        val isDownloaded = remoteModelManager.isModelDownloaded(model).await()
+        if (!isDownloaded) {
+            remoteModelManager.download(model, com.google.mlkit.common.model.DownloadConditions.Builder().build()).await()
+            Log.i(logTag, "Model downloaded for en-US")
+        }
+    } catch (e: Exception) {
+        Log.e(logTag, "Failed to download/check model", e)
+        return chunks.map { it.first to "[Model download error]" }
+    }
+    for ((chunkIndex, strokes) in chunks) {
         try {
-            val image = InputImage.fromBitmap(bitmap, 0)
-            val result = recognizer.process(image).await()
-            val text = result.text
+            val ink = strokesToInk(strokes)
+            val result = recognizer.recognize(ink).await()
+            val text = result.candidates.firstOrNull()?.text ?: ""
             Log.i(logTag, "Chunk $chunkIndex: $text")
             results.add(chunkIndex to text)
         } catch (e: Exception) {

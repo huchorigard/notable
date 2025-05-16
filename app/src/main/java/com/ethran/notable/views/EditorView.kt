@@ -50,8 +50,6 @@ import com.ethran.notable.utils.EditorState
 import com.ethran.notable.utils.History
 import com.ethran.notable.utils.convertDpToPixel
 import com.ethran.notable.db.AppDatabase
-import com.ethran.notable.utils.renderStrokesToChunks
-import com.ethran.notable.utils.recognizeTextInChunks
 import com.ethran.notable.utils.storeRecognizedTextResults
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.asImageBitmap
@@ -63,6 +61,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import com.ethran.notable.utils.chunkStrokesForDigitalInk
+import com.ethran.notable.utils.recognizeDigitalInkInChunks
 
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -248,14 +248,10 @@ fun EditorView(
                                 System.out.println("[HandwritingRecognition] No strokes to recognize on FAB click.")
                                 return@launch
                             }
-                            val chunks = renderStrokesToChunks(strokes)
-                            Log.i("HandwritingRecognition", "Rendering complete: ${chunks.size} chunks to process.")
-                            System.out.println("[HandwritingRecognition] Rendering complete: ${chunks.size} chunks to process.")
-                            if (chunks.isNotEmpty()) {
-                                bitmapToShow = chunks[0].second.asImageBitmap()
-                                showBitmapDialog = true
-                            }
-                            val recognizedChunks = recognizeTextInChunks(context, chunks)
+                            val chunks = chunkStrokesForDigitalInk(strokes)
+                            Log.i("HandwritingRecognition", "Chunking complete: ${chunks.size} chunks to process.")
+                            System.out.println("[HandwritingRecognition] Chunking complete: ${chunks.size} chunks to process.")
+                            val recognizedChunks = recognizeDigitalInkInChunks(context, chunks)
                             // Log recognized text output for each chunk
                             recognizedChunks.forEach { (chunkIndex, text) ->
                                 Log.i("HandwritingRecognition", "Recognized text for chunk $chunkIndex: $text")
@@ -284,21 +280,6 @@ fun EditorView(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp)
             ) {
                 Icon(Icons.Default.TextFields, contentDescription = "Recognize Handwriting")
-            }
-            // Show bitmap dialog if requested
-            if (showBitmapDialog && bitmapToShow != null) {
-                AlertDialog(
-                    onDismissRequest = { showBitmapDialog = false },
-                    title = { Text("First Rendered Chunk Bitmap") },
-                    text = {
-                        Image(bitmap = bitmapToShow!!, contentDescription = "Rendered Chunk Bitmap")
-                    },
-                    confirmButton = {
-                        Button(onClick = { showBitmapDialog = false }) {
-                            Text("Close")
-                        }
-                    }
-                )
             }
         }
     }

@@ -61,6 +61,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.concurrent.thread
+import kotlinx.coroutines.FlowPreview
 
 
 val pressure = EpdController.getMaxTouchPressure()
@@ -68,6 +69,7 @@ val pressure = EpdController.getMaxTouchPressure()
 // keep reference of the surface view presently associated to the singleton touchhelper
 var referencedSurfaceView: String = ""
 
+@OptIn(FlowPreview::class)
 class DrawCanvas(
     context: Context,
     val coroutineScope: CoroutineScope,

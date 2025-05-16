@@ -55,8 +55,8 @@ import compose.icons.feathericons.EyeOff
 import io.shipbook.shipbooksdk.Log
 import kotlinx.coroutines.launch
 import com.ethran.notable.db.AppDatabase
-import com.ethran.notable.utils.renderStrokesToChunks
-import com.ethran.notable.utils.recognizeTextInChunks
+import com.ethran.notable.utils.chunkStrokesForDigitalInk
+import com.ethran.notable.utils.recognizeDigitalInkInChunks
 import com.ethran.notable.utils.storeRecognizedTextResults
 import android.widget.Toast
 
@@ -380,8 +380,8 @@ fun Toolbar(
                             val pageId = state.pageId
                             val strokes = state.pageView.strokes
                             if (noteId != null && strokes.isNotEmpty()) {
-                                val chunks = renderStrokesToChunks(strokes)
-                                val recognizedChunks = recognizeTextInChunks(context, chunks)
+                                val chunks = chunkStrokesForDigitalInk(strokes)
+                                val recognizedChunks = recognizeDigitalInkInChunks(context, chunks)
                                 val db = AppDatabase.getDatabase(context)
                                 storeRecognizedTextResults(db.recognizedTextDao(), noteId, pageId, recognizedChunks)
                                 val failed = recognizedChunks.any { it.second == "[Recognition failed]" }
