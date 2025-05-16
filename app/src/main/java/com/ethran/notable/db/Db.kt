@@ -43,7 +43,7 @@ class Converters {
 class AutoMigration30to31 : AutoMigrationSpec
 
 @Database(
-    entities = [Folder::class, Notebook::class, Page::class, Stroke::class, Image::class, Kv::class],
+    entities = [Folder::class, Notebook::class, Page::class, Stroke::class, Image::class, Kv::class, RecognizedText::class],
     version = 31,
     autoMigrations = [
         AutoMigration(19, 20),
@@ -69,6 +69,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pageDao(): PageDao
     abstract fun strokeDao(): StrokeDao
     abstract fun ImageDao(): ImageDao
+    abstract fun recognizedTextDao(): RecognizedTextDao
 
     companion object {
         private var INSTANCE: AppDatabase? = null

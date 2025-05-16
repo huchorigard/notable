@@ -54,6 +54,11 @@ import compose.icons.feathericons.Clipboard
 import compose.icons.feathericons.EyeOff
 import io.shipbook.shipbooksdk.Log
 import kotlinx.coroutines.launch
+import com.ethran.notable.db.AppDatabase
+import com.ethran.notable.utils.renderStrokesToChunks
+import com.ethran.notable.utils.recognizeTextInChunks
+import com.ethran.notable.utils.storeRecognizedTextResults
+import android.widget.Toast
 
 fun presentlyUsedToolIcon(mode: Mode, pen: Pen): Int {
     return when (mode) {
@@ -370,7 +375,22 @@ fun Toolbar(
                     iconId = R.drawable.home, // Replace with your library icon resource
                     contentDescription = "library",
                     onSelect = {
-                        navController.navigate("library") // Navigate to main library
+                        scope.launch {
+                            val noteId = state.bookId
+                            val pageId = state.pageId
+                            val strokes = state.pageView.strokes
+                            if (noteId != null && strokes.isNotEmpty()) {
+                                val chunks = renderStrokesToChunks(strokes)
+                                val recognizedChunks = recognizeTextInChunks(context, chunks)
+                                val db = AppDatabase.getDatabase(context)
+                                storeRecognizedTextResults(db.recognizedTextDao(), noteId, pageId, recognizedChunks)
+                                val failed = recognizedChunks.any { it.second == "[Recognition failed]" }
+                                if (failed) {
+                                    Toast.makeText(context, "Some chunks failed to recognize", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            navController.navigate("library") // Navigate to main library
+                        }
                     }
                 )
                 Box(

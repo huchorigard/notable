@@ -1,6 +1,7 @@
 package com.ethran.notable.views
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,18 +11,27 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Button
+import androidx.compose.material.FloatingActionButton
+import androidx.compose.material.Icon
 import androidx.compose.material.Text
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import androidx.navigation.NavController
+import android.util.Log
 import com.ethran.notable.TAG
 import com.ethran.notable.classes.AppRepository
 import com.ethran.notable.classes.DrawCanvas
@@ -39,7 +49,20 @@ import com.ethran.notable.ui.theme.InkaTheme
 import com.ethran.notable.utils.EditorState
 import com.ethran.notable.utils.History
 import com.ethran.notable.utils.convertDpToPixel
-import io.shipbook.shipbooksdk.Log
+import com.ethran.notable.db.AppDatabase
+import com.ethran.notable.utils.renderStrokesToChunks
+import com.ethran.notable.utils.recognizeTextInChunks
+import com.ethran.notable.utils.storeRecognizedTextResults
+import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.material.AlertDialog
+import androidx.compose.material.Surface
+import androidx.compose.foundation.Image
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -162,6 +185,8 @@ fun EditorView(
         val toolbarPosition = GlobalAppSettings.current.toolbarPosition
 
         InkaTheme {
+            var showBitmapDialog by remember { mutableStateOf(false) }
+            var bitmapToShow by remember { mutableStateOf<ImageBitmap?>(null) }
             EditorSurface(
                 state = editorState, page = page, history = history
             )
@@ -207,6 +232,74 @@ fun EditorView(
                 }
             }
 
+            FloatingActionButton(
+                onClick = {
+                    System.out.println("[HandwritingRecognition] FAB onClick triggered")
+                    scope.launch {
+                        try {
+                            val noteId = _bookId ?: _pageId
+                            val pageId = _pageId
+                            val strokes = page.strokes
+                            Log.i("HandwritingRecognition", "FAB clicked: noteId=$noteId, pageId=$pageId, strokes=${strokes.size}")
+                            System.out.println("[HandwritingRecognition] FAB clicked: noteId=$noteId, pageId=$pageId, strokes=${strokes.size}")
+                            if (strokes.isEmpty()) {
+                                Toast.makeText(context, "No strokes to recognize", Toast.LENGTH_SHORT).show()
+                                Log.i("HandwritingRecognition", "No strokes to recognize on FAB click.")
+                                System.out.println("[HandwritingRecognition] No strokes to recognize on FAB click.")
+                                return@launch
+                            }
+                            val chunks = renderStrokesToChunks(strokes)
+                            Log.i("HandwritingRecognition", "Rendering complete: ${chunks.size} chunks to process.")
+                            System.out.println("[HandwritingRecognition] Rendering complete: ${chunks.size} chunks to process.")
+                            if (chunks.isNotEmpty()) {
+                                bitmapToShow = chunks[0].second.asImageBitmap()
+                                showBitmapDialog = true
+                            }
+                            val recognizedChunks = recognizeTextInChunks(context, chunks)
+                            // Log recognized text output for each chunk
+                            recognizedChunks.forEach { (chunkIndex, text) ->
+                                Log.i("HandwritingRecognition", "Recognized text for chunk $chunkIndex: $text")
+                                System.out.println("[HandwritingRecognition] Recognized text for chunk $chunkIndex: $text")
+                            }
+                            val db = AppDatabase.getDatabase(context)
+                            storeRecognizedTextResults(db.recognizedTextDao(), noteId, pageId, recognizedChunks)
+                            val failed = recognizedChunks.any { it.second == "[Recognition failed]" }
+                            if (failed) {
+                                Toast.makeText(context, "Some chunks failed to recognize", Toast.LENGTH_LONG).show()
+                                Log.i("HandwritingRecognition", "Some chunks failed to recognize.")
+                                System.out.println("[HandwritingRecognition] Some chunks failed to recognize.")
+                            } else {
+                                Toast.makeText(context, "Recognition complete!", Toast.LENGTH_SHORT).show()
+                                Log.i("HandwritingRecognition", "Recognition complete and successful for all chunks.")
+                                System.out.println("[HandwritingRecognition] Recognition complete and successful for all chunks.")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("HandwritingRecognition", "Exception in FAB handler", e)
+                            System.out.println("[HandwritingRecognition] Exception in FAB handler: ${e.message}")
+                        }
+                    }
+                },
+                backgroundColor = Color.Black,
+                contentColor = Color.White,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp)
+            ) {
+                Icon(Icons.Default.TextFields, contentDescription = "Recognize Handwriting")
+            }
+            // Show bitmap dialog if requested
+            if (showBitmapDialog && bitmapToShow != null) {
+                AlertDialog(
+                    onDismissRequest = { showBitmapDialog = false },
+                    title = { Text("First Rendered Chunk Bitmap") },
+                    text = {
+                        Image(bitmap = bitmapToShow!!, contentDescription = "Rendered Chunk Bitmap")
+                    },
+                    confirmButton = {
+                        Button(onClick = { showBitmapDialog = false }) {
+                            Text("Close")
+                        }
+                    }
+                )
+            }
         }
     }
 }

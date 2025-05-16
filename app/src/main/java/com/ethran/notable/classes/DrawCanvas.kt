@@ -122,18 +122,8 @@ class DrawCanvas(
             val startTime = System.currentTimeMillis()
             val minPressure = 50f
 
-            // Log all points with metadata
-            plist.points.forEachIndexed { idx, pt ->
-                Log.d(TAG, "Raw Point $idx: x=${pt.x}, y=${pt.y}, pressure=${pt.pressure}, tiltX=${pt.tiltX}, tiltY=${pt.tiltY}, timestamp=${pt.timestamp}")
-            }
-
             // Filter, handling nullable pressure
             val filteredPoints = plist.points.filter { (it.pressure ?: 0f) >= minPressure }
-
-            // Log filtered points
-            filteredPoints.forEachIndexed { idx, pt ->
-                Log.d(TAG, "Filtered Point $idx: x=${pt.x}, y=${pt.y}, pressure=${pt.pressure}, tiltX=${pt.tiltX}, tiltY=${pt.tiltY}, timestamp=${pt.timestamp}")
-            }
 
             if (filteredPoints.isEmpty()) {
                 Log.d(TAG, "No points above pressure threshold ($minPressure)")
