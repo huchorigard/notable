@@ -71,4 +71,7 @@ interface RecognizedTextDao {
 
     @Query("DELETE FROM RecognizedTextChunk WHERE pageId = :pageId")
     fun deleteChunksByPage(pageId: String)
+
+    @Query("DELETE FROM RecognizedTextChunk WHERE ',' || strokeIds || ',' LIKE '%' || :strokeId || '%' ")
+    fun deleteChunksByStrokeId(strokeId: String)
 } 

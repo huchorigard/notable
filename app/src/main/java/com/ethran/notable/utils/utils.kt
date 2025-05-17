@@ -34,6 +34,7 @@ import com.ethran.notable.R
 import com.ethran.notable.TAG
 import com.ethran.notable.classes.AppRepository
 import com.ethran.notable.classes.PageView
+import com.ethran.notable.db.AppDatabase
 import com.ethran.notable.db.Image
 import com.ethran.notable.db.Stroke
 import com.ethran.notable.db.StrokePoint
@@ -137,7 +138,8 @@ fun handleErase(
     page: PageView,
     history: History,
     points: List<SimplePointF>,
-    eraser: Eraser
+    eraser: Eraser,
+    context: Context
 ) {
     val paint = Paint().apply {
         this.strokeWidth = 30f
@@ -160,15 +162,19 @@ fun handleErase(
     }
 
     val deletedStrokes = selectStrokesFromPath(page.strokes, outPath)
-
     val deletedStrokeIds = deletedStrokes.map { it.id }
     page.removeStrokes(deletedStrokeIds)
-
     history.addOperationsToHistory(listOf(Operation.AddStroke(deletedStrokes)))
-
     page.drawArea(
         area = pageAreaToCanvasArea(strokeBounds(deletedStrokes), page.scroll)
     )
+
+    // --- Remove recognized text chunks for erased strokes ---
+    val db = AppDatabase.getDatabase(context)
+    val recognizedTextDao = db.recognizedTextDao()
+    deletedStrokeIds.forEach { strokeId ->
+        recognizedTextDao.deleteChunksByStrokeId(strokeId)
+    }
 }
 
 enum class SelectPointPosition {

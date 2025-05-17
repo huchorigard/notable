@@ -180,7 +180,8 @@ class DrawCanvas(
                         this@DrawCanvas.page,
                         history,
                         filteredPoints.map { SimplePointF(it.x, it.y + page.scroll) },
-                        eraser = getActualState().eraser
+                        eraser = getActualState().eraser,
+                        context
                     )
                     drawCanvasToView()
                     refreshUi()
@@ -224,7 +225,8 @@ class DrawCanvas(
                 this@DrawCanvas.page,
                 history,
                 plist.points.map { SimplePointF(it.x, it.y + page.scroll) },
-                eraser = getActualState().eraser
+                eraser = getActualState().eraser,
+                context
             )
             drawCanvasToView()
             refreshUi()

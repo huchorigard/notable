@@ -470,11 +470,17 @@ fun Toolbar(
 
         if (showRecognizedTextDialog) {
             AlertDialog(
-                onDismissRequest = { showRecognizedTextDialog = false },
+                onDismissRequest = { 
+                    showRecognizedTextDialog = false
+                    state.isDrawing = true // Restore drawing mode
+                },
                 title = { Text("Recognized Text Corpus") },
                 text = { Text(recognizedTextCorpus) },
                 confirmButton = {
-                    Button(onClick = { showRecognizedTextDialog = false }) {
+                    Button(onClick = { 
+                        showRecognizedTextDialog = false
+                        state.isDrawing = true // Restore drawing mode
+                    }) {
                         Text("Close")
                     }
                 }
