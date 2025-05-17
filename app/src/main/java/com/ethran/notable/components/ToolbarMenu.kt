@@ -45,8 +45,7 @@ import kotlinx.coroutines.withContext
 fun ToolbarMenu(
     navController: NavController,
     state: EditorState,
-    onClose: () -> Unit,
-    onPageSettingsOpen: () -> Unit
+    onClose: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -277,24 +276,6 @@ fun ToolbarMenu(
                     .height(0.5.dp)
                     .background(Color.Black)
             )
-            Box(
-                Modifier
-                    .padding(10.dp)
-                    .noRippleClickable {
-                        onPageSettingsOpen()
-                        onClose()
-                    }
-            ) { Text("Page Settings") }
-
-            /*Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(0.5.dp)
-                    .background(Color.Black)
-            )
-            Box(Modifier.padding(10.dp)) {
-                Text("Refresh page")
-            }*/
         }
     }
 }

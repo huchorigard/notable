@@ -40,7 +40,6 @@ import com.ethran.notable.classes.EditorControlTower
 import com.ethran.notable.modals.AppSettings
 import com.ethran.notable.modals.BUTTON_SIZE
 import com.ethran.notable.modals.GlobalAppSettings
-import com.ethran.notable.modals.PageSettingsModal
 import com.ethran.notable.utils.EditorState
 import com.ethran.notable.utils.History
 import com.ethran.notable.utils.Mode
@@ -58,6 +57,12 @@ import com.ethran.notable.db.AppDatabase
 import com.ethran.notable.utils.recognizeDigitalInkOnPage
 import com.ethran.notable.utils.storeRecognizedTextResult
 import android.widget.Toast
+import androidx.compose.material.DropdownMenu
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.IconButton
+import androidx.compose.material.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GridOn
 
 fun presentlyUsedToolIcon(mode: Mode, pen: Pen): Int {
     return when (mode) {
@@ -98,7 +103,7 @@ fun Toolbar(
     val scope = rememberCoroutineScope()
     var isStrokeSelectionOpen by remember { mutableStateOf(false) }
     var isMenuOpen by remember { mutableStateOf(false) }
-    var isPageSettingsModalOpen by remember { mutableStateOf(false) }
+    var isTemplateMenuOpen by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
 
@@ -155,11 +160,6 @@ fun Toolbar(
         state.penSettings = settings
     }
 
-    if (isPageSettingsModalOpen) {
-        PageSettingsModal(pageView = state.pageView) {
-            isPageSettingsModalOpen = false
-        }
-    }
     if (state.isToolbarOpen) {
         Column(
             modifier = Modifier
@@ -302,6 +302,39 @@ fun Toolbar(
                     )
                 }
 
+                Box {
+                    IconButton(onClick = { isTemplateMenuOpen = true }) {
+                        Icon(Icons.Default.GridOn, contentDescription = "Page Template")
+                    }
+                    DropdownMenu(
+                        expanded = isTemplateMenuOpen,
+                        onDismissRequest = { isTemplateMenuOpen = false }
+                    ) {
+                        val pageView = state.pageView
+                        val currentTemplate = pageView.pageFromDb?.background ?: "blank"
+                        val templateOptions = listOf(
+                            "blank" to "Blank page",
+                            "dotted" to "Dot grid",
+                            "lined" to "Lines",
+                            "squared" to "Small squares grid",
+                            "hexed" to "Hexagon grid"
+                        )
+                        templateOptions.forEach { (value, label) ->
+                            DropdownMenuItem(onClick = {
+                                val updatedPage = pageView.pageFromDb!!.copy(
+                                    background = value,
+                                    backgroundType = "native"
+                                )
+                                pageView.updatePageSettings(updatedPage)
+                                scope.launch { DrawCanvas.refreshUi.emit(Unit) }
+                                isTemplateMenuOpen = false
+                            }) {
+                                Text(label + if (currentTemplate == value) "  ✓" else "")
+                            }
+                        }
+                    }
+                }
+
                 Spacer(Modifier.weight(1f))
 
                 Box(
@@ -405,8 +438,7 @@ fun Toolbar(
                     if (isMenuOpen) ToolbarMenu(
                         navController = navController,
                         state = state,
-                        onClose = { isMenuOpen = false },
-                        onPageSettingsOpen = { isPageSettingsModalOpen = true })
+                        onClose = { isMenuOpen = false })
                 }
             }
 
