@@ -68,6 +68,8 @@ import com.ethran.notable.utils.reconstructTextFromChunks
 import androidx.compose.material.AlertDialog
 import androidx.compose.material.Button
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxSize
 
 fun presentlyUsedToolIcon(mode: Mode, pen: Pen): Int {
     return when (mode) {
@@ -209,18 +211,28 @@ fun Toolbar(
                     sizes = listOf("S" to 3f, "M" to 5f, "L" to 10f, "XL" to 20f),
                     penSetting = state.penSettings[Pen.BALLPEN.penName] ?: return,
                     onChangeSetting = { onChangeStrokeSetting(Pen.BALLPEN.penName, it) })
-
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .width(0.5.dp)
+                        .background(Color.Black)
+                )
                 PenToolbarButton(
                     onStrokeMenuOpenChange = { state.isDrawing = !it },
                     pen = Pen.FOUNTAIN,
                     icon = R.drawable.fountain,
-                    isSelected = isSelected(state, Pen.FOUNTAIN),
-                    onSelect = { handleChangePen(Pen.FOUNTAIN) },// Neo-tool! Usage not recommended
+                    isSelected = state.mode == Mode.Draw && state.pen == Pen.FOUNTAIN,
+                    onSelect = { handleChangePen(Pen.FOUNTAIN) },
                     sizes = listOf("S" to 3f, "M" to 5f, "L" to 10f, "XL" to 20f),
                     penSetting = state.penSettings[Pen.FOUNTAIN.penName] ?: return,
                     onChangeSetting = { onChangeStrokeSetting(Pen.FOUNTAIN.penName, it) },
                 )
-
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .width(0.5.dp)
+                        .background(Color.Black)
+                )
                 LineToolbarButton(
                     unSelect = { state.mode = Mode.Draw },
                     icon = R.drawable.line,
@@ -239,7 +251,7 @@ fun Toolbar(
                     onStrokeMenuOpenChange = { state.isDrawing = !it },
                     pen = Pen.MARKER,
                     icon = R.drawable.marker,
-                    isSelected = isSelected(state, Pen.MARKER),
+                    isSelected = state.mode == Mode.Draw && state.pen == Pen.MARKER,
                     onSelect = { handleChangePen(Pen.MARKER) },
                     sizes = listOf("L" to 40f, "XL" to 60f),
                     penSetting = state.penSettings[Pen.MARKER.penName] ?: return,
@@ -309,39 +321,52 @@ fun Toolbar(
                     )
                 }
 
-                Box {
-                    IconButton(onClick = { isTemplateMenuOpen = true }) {
-                        Icon(Icons.Default.GridOn, contentDescription = "Page Template")
-                    }
-                    DropdownMenu(
-                        expanded = isTemplateMenuOpen,
-                        onDismissRequest = { isTemplateMenuOpen = false }
-                    ) {
-                        val pageView = state.pageView
-                        val currentTemplate = pageView.pageFromDb?.background ?: "blank"
-                        val templateOptions = listOf(
-                            "blank" to "Blank page",
-                            "dotted" to "Dot grid",
-                            "lined" to "Lines",
-                            "squared" to "Small squares grid",
-                            "hexed" to "Hexagon grid"
-                        )
-                        templateOptions.forEach { (value, label) ->
-                            DropdownMenuItem(onClick = {
-                                val updatedPage = pageView.pageFromDb!!.copy(
-                                    background = value,
-                                    backgroundType = "native"
-                                )
-                                pageView.updatePageSettings(updatedPage)
-                                scope.launch { DrawCanvas.refreshUi.emit(Unit) }
-                                isTemplateMenuOpen = false
-                            }) {
-                                Text(label + if (currentTemplate == value) "  ✓" else "")
-                            }
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .width(0.5.dp)
+                        .background(Color.Black)
+                )
+                IconButton(
+                    onClick = { isTemplateMenuOpen = true },
+                    modifier = Modifier // No extra padding
+                ) {
+                    Icon(Icons.Default.GridOn, contentDescription = "Page Template", modifier = Modifier.size(20.dp))
+                }
+                DropdownMenu(
+                    expanded = isTemplateMenuOpen,
+                    onDismissRequest = { isTemplateMenuOpen = false },
+                    offset = androidx.compose.ui.unit.DpOffset(0.dp, 40.dp) // Show below the icon
+                ) {
+                    val pageView = state.pageView
+                    val currentTemplate = pageView.pageFromDb?.background ?: "blank"
+                    val templateOptions = listOf(
+                        "blank" to "Blank page",
+                        "dotted" to "Dot grid",
+                        "lined" to "Lines",
+                        "squared" to "Small squares grid",
+                        "hexed" to "Hexagon grid"
+                    )
+                    templateOptions.forEach { (value, label) ->
+                        DropdownMenuItem(onClick = {
+                            val updatedPage = pageView.pageFromDb!!.copy(
+                                background = value,
+                                backgroundType = "native"
+                            )
+                            pageView.updatePageSettings(updatedPage)
+                            scope.launch { DrawCanvas.refreshUi.emit(Unit) }
+                            isTemplateMenuOpen = false
+                        }) {
+                            Text(label + if (currentTemplate == value) "  ✓" else "")
                         }
                     }
                 }
-
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .width(0.5.dp)
+                        .background(Color.Black)
+                )
                 ToolbarButton(
                     vectorIcon = Icons.Default.TextFields,
                     contentDescription = "Show Recognized Text",
@@ -351,6 +376,12 @@ fun Toolbar(
                         recognizedTextCorpus = reconstructTextFromChunks(chunks)
                         showRecognizedTextDialog = true
                     }
+                )
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .width(0.5.dp)
+                        .background(Color.Black)
                 )
 
                 Spacer(Modifier.weight(1f))

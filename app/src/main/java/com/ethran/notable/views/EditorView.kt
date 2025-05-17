@@ -237,49 +237,6 @@ fun EditorView(
                     }
                 }
             }
-
-            FloatingActionButton(
-                onClick = {
-                    System.out.println("[HandwritingRecognition] FAB onClick triggered")
-                    scope.launch {
-                        try {
-                            val noteId = _bookId ?: _pageId
-                            val pageId = _pageId
-                            val strokes = page.strokes
-                            Log.i("HandwritingRecognition", "FAB clicked: noteId=$noteId, pageId=$pageId, strokes=${strokes.size}")
-                            System.out.println("[HandwritingRecognition] FAB clicked: noteId=$noteId, pageId=$pageId, strokes=${strokes.size}")
-                            if (strokes.isEmpty()) {
-                                Toast.makeText(context, "No strokes to recognize", Toast.LENGTH_SHORT).show()
-                                Log.i("HandwritingRecognition", "No strokes to recognize on FAB click.")
-                                System.out.println("[HandwritingRecognition] No strokes to recognize on FAB click.")
-                                return@launch
-                            }
-                            val recognizedText = recognizeDigitalInkOnPage(context, strokes)
-                            Log.i("HandwritingRecognition", "Recognized text: $recognizedText")
-                            System.out.println("[HandwritingRecognition] Recognized text: $recognizedText")
-                            val db = AppDatabase.getDatabase(context)
-                            storeRecognizedTextResult(db.recognizedTextDao(), noteId, pageId, recognizedText)
-                            if (recognizedText == "[Recognition failed]") {
-                                Toast.makeText(context, "Recognition failed", Toast.LENGTH_LONG).show()
-                                Log.i("HandwritingRecognition", "Recognition failed.")
-                                System.out.println("[HandwritingRecognition] Recognition failed.")
-                            } else {
-                                Toast.makeText(context, "Recognition complete!", Toast.LENGTH_SHORT).show()
-                                Log.i("HandwritingRecognition", "Recognition complete and successful.")
-                                System.out.println("[HandwritingRecognition] Recognition complete and successful.")
-                            }
-                        } catch (e: Exception) {
-                            Log.e("HandwritingRecognition", "Exception in FAB handler", e)
-                            System.out.println("[HandwritingRecognition] Exception in FAB handler: ${e.message}")
-                        }
-                    }
-                },
-                backgroundColor = Color.Black,
-                contentColor = Color.White,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp)
-            ) {
-                Icon(Icons.Default.TextFields, contentDescription = "Recognize Handwriting")
-            }
         }
     }
 }

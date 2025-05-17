@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ethran.notable.R
 import com.ethran.notable.utils.noRippleClickable
 
 @Composable
@@ -35,7 +36,7 @@ fun ToolbarButton(
                 onSelect()
             }
             .background(
-                color = if (isSelected) penColor ?: Color.Black else penColor ?: Color.Transparent,
+                color = if (isSelected) Color.Black.copy(alpha = 0.15f) else Color.Transparent,
                 shape = if (!isSelected) CircleShape else RectangleShape
             )
             .padding(7.dp)
@@ -43,11 +44,20 @@ fun ToolbarButton(
     ) {
         //needs simplification:
         if (iconId != null) {
+            // For pen, plume, and line icons, always use Color.Black
+            val alwaysBlackIcons = setOf(
+                R.drawable.ballpen,
+                R.drawable.fountain,
+                R.drawable.line,
+                R.drawable.pencil,
+                R.drawable.brush,
+                R.drawable.marker
+            )
             Icon(
                 painter = painterResource(id = iconId),
                 contentDescription,
                 Modifier,
-                if (penColor == Color.Black || penColor == Color.DarkGray) Color.White else if (isSelected) Color.White else Color.Black
+                if (iconId in alwaysBlackIcons) Color.Black else if (penColor == Color.Black || penColor == Color.DarkGray) Color.White else if (isSelected) Color.White else Color.Black
             )
         }
         if (vectorIcon!=null){
