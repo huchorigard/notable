@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.toOffset
 import androidx.core.graphics.createBitmap
 import com.ethran.notable.TAG
+import com.ethran.notable.db.AppDatabase
 import com.ethran.notable.db.Image
 import com.ethran.notable.db.Stroke
 import com.ethran.notable.utils.Operation
@@ -154,7 +155,6 @@ class SelectionState {
     }
 
     fun applySelectionDisplace(page: PageView): List<Operation>? {
-
         if (selectionDisplaceOffset == null) return null
         if (selectionRect == null) return null
 
@@ -179,6 +179,27 @@ class SelectionState {
             page.addStrokes(displacedStrokes)
             page.drawArea(finalZone)
 
+            // --- Update RecognizedTextChunk bounding boxes for moved strokes ---
+            val db = AppDatabase.getDatabase(page.context)
+            val recognizedTextDao = db.recognizedTextDao()
+            val pageId = page.id
+            val chunks = recognizedTextDao.getChunksForPage(pageId)
+            for (chunk in chunks) {
+                // If any of the moved strokes are in this chunk, update its bounding box
+                if (chunk.strokeIds.any { id -> displacedStrokes.any { it.id == id } }) {
+                    // Find all strokes for this chunk
+                    val strokesForChunk = displacedStrokes.filter { it.id in chunk.strokeIds }
+                    if (strokesForChunk.isNotEmpty()) {
+                        val allPoints = strokesForChunk.flatMap { it.points }
+                        val minX = allPoints.minOfOrNull { it.x } ?: chunk.minX
+                        val minY = allPoints.minOfOrNull { it.y } ?: chunk.minY
+                        val maxX = allPoints.maxOfOrNull { it.x } ?: chunk.maxX
+                        val maxY = allPoints.maxOfOrNull { it.y } ?: chunk.maxY
+                        val updatedChunk = chunk.copy(minX = minX, minY = minY, maxX = maxX, maxY = maxY)
+                        recognizedTextDao.updateChunk(updatedChunk)
+                    }
+                }
+            }
 
             if (offset.x > 0 || offset.y > 0) {
                 // A displacement happened, we can create a history for this

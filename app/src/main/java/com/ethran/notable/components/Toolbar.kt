@@ -70,6 +70,8 @@ import androidx.compose.material.Button
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 
 fun presentlyUsedToolIcon(mode: Mode, pen: Pen): Int {
     return when (mode) {
@@ -293,18 +295,11 @@ fun Toolbar(
                     iconId = R.drawable.image,
                     contentDescription = "library",
                     onSelect = {
-                        // Call insertImage when the button is tapped
                         Log.i("InsertImage", "Launching image picker...")
                         pickMedia.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly))
                     }
                 )
-                Box(
-                    Modifier
-                        .fillMaxHeight()
-                        .width(0.5.dp)
-                        .background(Color.Black)
-                )
-
+                
                 if (state.clipboard != null) {
                     ToolbarButton(
                         vectorIcon = FeatherIcons.Clipboard,
@@ -327,12 +322,12 @@ fun Toolbar(
                         .width(0.5.dp)
                         .background(Color.Black)
                 )
-                IconButton(
-                    onClick = { isTemplateMenuOpen = true },
-                    modifier = Modifier // No extra padding
-                ) {
-                    Icon(Icons.Default.GridOn, contentDescription = "Page Template", modifier = Modifier.size(20.dp))
-                }
+                // Anchor grid icon and menu
+                ToolbarButton(
+                    vectorIcon = Icons.Default.GridOn,
+                    contentDescription = "Page Template",
+                    onSelect = { isTemplateMenuOpen = true }
+                )
                 DropdownMenu(
                     expanded = isTemplateMenuOpen,
                     onDismissRequest = { isTemplateMenuOpen = false },
