@@ -67,6 +67,14 @@ import com.ethran.notable.utils.recognizeDigitalInkOnPage
 import com.ethran.notable.utils.storeRecognizedTextResult
 import com.ethran.notable.db.RecognizedTextChunk
 import com.ethran.notable.utils.reconstructTextFromChunks
+import com.ethran.notable.db.NoteSummary
+import com.ethran.notable.db.NoteSummaryDao
+import java.util.Date
+import kotlinx.coroutines.runBlocking
+import com.ethran.notable.utils.GemmaModelManager
+import com.ethran.notable.utils.GemmaMediaPipeSummarizer
+import androidx.compose.runtime.rememberUpdatedState
+import android.content.Context
 
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -134,11 +142,24 @@ fun EditorView(
             }
         }
 
+        var shouldSummarize by remember { mutableStateOf(false) }
         DisposableEffect(Unit) {
             onDispose {
-                // finish selection operation
-                editorState.selectionState.applySelectionDisplace(page)
-                page.onDispose()
+                shouldSummarize = true
+            }
+        }
+        LaunchedEffect(shouldSummarize) {
+            if (shouldSummarize && _bookId != null) {
+                val db = AppDatabase.getDatabase(context)
+                val recognizedTextChunks = db.recognizedTextDao().getChunksForPage(_pageId)
+                val recognizedText = reconstructTextFromChunks(recognizedTextChunks)
+                val summary = summarizeWithLLM(context, recognizedText)
+                val noteSummary = NoteSummary(
+                    noteId = _bookId,
+                    summaryText = summary,
+                    timestamp = System.currentTimeMillis()
+                )
+                db.noteSummaryDao().insert(noteSummary)
             }
         }
 
@@ -239,6 +260,16 @@ fun EditorView(
             }
         }
     }
+}
+
+suspend fun summarizeWithLLM(context: Context, text: String): String {
+    if (!GemmaModelManager.isModelDownloaded(context)) {
+        val ok = GemmaModelManager.downloadModel(context)
+        if (!ok) {
+            return "[Summary unavailable: model not downloaded]"
+        }
+    }
+    return GemmaMediaPipeSummarizer.summarize(context, text)
 }
 
 

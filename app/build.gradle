@@ -133,6 +133,7 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.0'
     implementation 'androidx.activity:activity-compose:1.10.1'
     implementation 'androidx.fragment:fragment-ktx:1.8.6'
+    implementation 'com.google.mediapipe:tasks-genai:0.10.22'
     // implementation 'com.google.mlkit:text-recognition:16.0.0'
     implementation 'com.google.mlkit:digital-ink-recognition:18.1.0'
 
@@ -197,6 +198,10 @@ dependencies {
     // For xopp file format
     implementation("org.apache.commons:commons-compress:1.27.1") // GZip support
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0"
+
+    implementation 'org.tensorflow:tensorflow-lite:2.14.0'
+
+    implementation 'com.google.mediapipe:tasks-genai:0.10.22'
 }
 
 tasks.register('printVersionName') {

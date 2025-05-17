@@ -20,9 +20,21 @@ import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material.AlertDialog
+import androidx.compose.material.Button
+import androidx.compose.material.LinearProgressIndicator
+import androidx.compose.material.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,7 +56,10 @@ import com.ethran.notable.views.Router
 import com.onyx.android.sdk.api.device.epd.EpdController
 import io.shipbook.shipbooksdk.Log
 import io.shipbook.shipbooksdk.ShipBook
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import com.ethran.notable.utils.GemmaModelManager
+import androidx.compose.runtime.setValue
 
 
 var SCREEN_WIDTH = EpdController.getEpdHeight().toInt()
@@ -93,20 +108,92 @@ class MainActivity : ComponentActivity() {
         val intentData = intent.data?.lastPathSegment
         setContent {
             InkaTheme {
-                CompositionLocalProvider(LocalSnackContext provides snackState) {
-                    Box(
-                        Modifier
-                            .background(Color.White)
-                    ) {
-                        Router()
+                var showDownloadDialog by remember { mutableStateOf(false) }
+                var downloadProgress by remember { mutableStateOf(0) }
+                var isDownloading by remember { mutableStateOf(false) }
+                var downloadFailed by remember { mutableStateOf(false) }
+                val scope = rememberCoroutineScope()
+
+                // Check for model presence at app start
+                LaunchedEffect(Unit) {
+                    if (!GemmaModelManager.isModelDownloaded(this@MainActivity)) {
+                        showDownloadDialog = true
                     }
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .background(Color.Black)
+                }
+
+                if (showDownloadDialog) {
+                    AlertDialog(
+                        onDismissRequest = {},
+                        title = { Text("Download AI Model") },
+                        text = {
+                            if (isDownloading) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("Downloading Gemma model... $downloadProgress%")
+                                    Spacer(Modifier.height(16.dp))
+                                    LinearProgressIndicator(progress = downloadProgress / 100f)
+                                }
+                            } else if (downloadFailed) {
+                                Text("Download failed. Please check your connection and try again.")
+                            } else {
+                                Text("The AI model required for note summarization is not present. Download now? (~hundreds of MB)")
+                            }
+                        },
+                        confirmButton = {
+                            if (!isDownloading && !downloadFailed) {
+                                Button(onClick = {
+                                    isDownloading = true
+                                    downloadFailed = false
+                                    scope.launch(Dispatchers.IO) {
+                                        val ok = GemmaModelManager.downloadModel(this@MainActivity) {
+                                            downloadProgress = it
+                                        }
+                                        if (ok) {
+                                            showDownloadDialog = false
+                                        } else {
+                                            isDownloading = false
+                                            downloadFailed = true
+                                        }
+                                    }
+                                }) {
+                                    Text("Yes, download")
+                                }
+                            } else if (downloadFailed) {
+                                Button(onClick = {
+                                    downloadFailed = false
+                                }) {
+                                    Text("Retry")
+                                }
+                            }
+                        },
+                        dismissButton = {
+                            if (!isDownloading) {
+                                Button(onClick = {
+                                    showDownloadDialog = false
+                                }) {
+                                    Text("No, exit app")
+                                }
+                            }
+                        }
                     )
-                    SnackBar(state = snackState)
+                }
+
+                // Main app UI (only shown if model is present or after download)
+                if (!showDownloadDialog) {
+                    CompositionLocalProvider(LocalSnackContext provides snackState) {
+                        Box(
+                            Modifier
+                                .background(Color.White)
+                        ) {
+                            Router()
+                        }
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(Color.Black)
+                        )
+                        SnackBar(state = snackState)
+                    }
                 }
             }
         }

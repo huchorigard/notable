@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Environment
 import androidx.room.*
 import androidx.room.migration.AutoMigrationSpec
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.Date
@@ -37,8 +39,8 @@ class Converters {
 class AutoMigration30to31 : AutoMigrationSpec
 
 @Database(
-    entities = [Folder::class, Notebook::class, Page::class, Stroke::class, Image::class, Kv::class, RecognizedText::class, RecognizedTextChunk::class],
-    version = 32,
+    entities = [Folder::class, Notebook::class, Page::class, Stroke::class, Image::class, Kv::class, RecognizedText::class, RecognizedTextChunk::class, NoteSummary::class],
+    version = 33,
     autoMigrations = [
         AutoMigration(19, 20),
         AutoMigration(20, 21),
@@ -51,7 +53,6 @@ class AutoMigration30to31 : AutoMigrationSpec
         AutoMigration(28, 29),
         AutoMigration(29, 30),
         AutoMigration(30,  31, spec = AutoMigration30to31::class)
-
     ], exportSchema = true
 )
 @TypeConverters(Converters::class, StrokeIdListConverter::class)
@@ -64,6 +65,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun strokeDao(): StrokeDao
     abstract fun ImageDao(): ImageDao
     abstract fun recognizedTextDao(): RecognizedTextDao
+    abstract fun noteSummaryDao(): NoteSummaryDao
 
     companion object {
         private var INSTANCE: AppDatabase? = null
@@ -80,10 +82,22 @@ abstract class AppDatabase : RoomDatabase() {
                     val dbFile = File(dbDir, "app_database")
 
                     // Use Room to build the database
+                    val MIGRATION_32_33 = object : Migration(32, 33) {
+                        override fun migrate(database: SupportSQLiteDatabase) {
+                            database.execSQL("""
+                                CREATE TABLE IF NOT EXISTS NoteSummary (
+                                    noteId TEXT NOT NULL PRIMARY KEY,
+                                    summaryText TEXT NOT NULL,
+                                    timestamp INTEGER NOT NULL
+                                )
+                            """)
+                        }
+                    }
+
                     INSTANCE =
                         Room.databaseBuilder(context, AppDatabase::class.java, dbFile.absolutePath)
                             .allowMainThreadQueries() // Avoid in production
-                            .addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_22_23, MIGRATION_31_32)
+                            .addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_22_23, MIGRATION_31_32, MIGRATION_32_33)
                             .build()
 
                 }
