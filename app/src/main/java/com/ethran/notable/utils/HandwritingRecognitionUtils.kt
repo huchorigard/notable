@@ -17,6 +17,7 @@ import com.google.mlkit.vision.digitalink.DigitalInkRecognitionModel
 import com.google.mlkit.vision.digitalink.DigitalInkRecognizerOptions
 import com.google.mlkit.vision.digitalink.DigitalInkRecognition
 import com.google.mlkit.vision.digitalink.Ink
+import com.ethran.notable.db.RecognizedTextChunk
 
 /**
  * Splits the bounding box of all strokes into 1024x1024 px tiles,
@@ -217,4 +218,62 @@ suspend fun storeRecognizedTextResult(
         updatedAt = Date()
     )
     recognizedTextDao.insert(result)
+}
+
+suspend fun recognizeChunkAndExtractMetadata(
+    context: Context,
+    strokes: List<Stroke>,
+    pageId: String,
+    logTag: String = "HandwritingRecognition"
+): RecognizedTextChunk {
+    val modelIdentifier = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en-US")
+    val model = DigitalInkRecognitionModel.builder(modelIdentifier!!).build()
+    val recognizer = DigitalInkRecognition.getClient(
+        DigitalInkRecognizerOptions.builder(model).build()
+    )
+    // Download model if needed
+    val remoteModelManager = com.google.mlkit.common.model.RemoteModelManager.getInstance()
+    val isDownloaded = remoteModelManager.isModelDownloaded(model).await()
+    if (!isDownloaded) {
+        remoteModelManager.download(model, com.google.mlkit.common.model.DownloadConditions.Builder().build()).await()
+    }
+    val ink = strokesToInk(strokes)
+    val result = recognizer.recognize(ink).await()
+    val text = result.candidates.firstOrNull()?.text ?: ""
+    // Extract bounding box
+    val allPoints = strokes.flatMap { it.points }
+    val minX = allPoints.minOfOrNull { it.x } ?: 0f
+    val minY = allPoints.minOfOrNull { it.y } ?: 0f
+    val maxX = allPoints.maxOfOrNull { it.x } ?: 0f
+    val maxY = allPoints.maxOfOrNull { it.y } ?: 0f
+    val timestamp = allPoints.minOfOrNull { it.timestamp } ?: System.currentTimeMillis()
+    val strokeIds = strokes.map { it.id }
+    return RecognizedTextChunk(
+        pageId = pageId,
+        recognizedText = text,
+        minX = minX,
+        minY = minY,
+        maxX = maxX,
+        maxY = maxY,
+        timestamp = timestamp,
+        strokeIds = strokeIds
+    )
+}
+
+fun reconstructTextFromChunks(chunks: List<RecognizedTextChunk>, lineThreshold: Float = 60f): String {
+    if (chunks.isEmpty()) return ""
+    // Group by line using minY, then sort by minX within each line
+    val sortedChunks = chunks.sortedWith(compareBy({ it.minY }, { it.minX }))
+    val lines = mutableListOf<MutableList<RecognizedTextChunk>>()
+    for (chunk in sortedChunks) {
+        val line = lines.lastOrNull()
+        if (line == null || kotlin.math.abs(chunk.minY - line[0].minY) > lineThreshold) {
+            lines.add(mutableListOf(chunk))
+        } else {
+            line.add(chunk)
+        }
+    }
+    return lines.joinToString("\n") { lineChunks ->
+        lineChunks.sortedBy { it.minX }.joinToString(" ") { it.recognizedText }
+    }
 } 

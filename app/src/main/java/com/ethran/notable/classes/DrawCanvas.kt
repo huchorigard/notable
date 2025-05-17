@@ -62,6 +62,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.concurrent.thread
 import kotlinx.coroutines.FlowPreview
+import com.ethran.notable.utils.recognizeChunkAndExtractMetadata
+import com.ethran.notable.db.AppDatabase
 
 
 val pressure = EpdController.getMaxTouchPressure()
@@ -80,6 +82,9 @@ class DrawCanvas(
     private val strokeHistoryBatch = mutableListOf<String>()
 //    private val commitHistorySignal = MutableSharedFlow<Unit>()
 
+    // Add these properties to DrawCanvas
+    private val realTimeStrokeBuffer = mutableListOf<com.ethran.notable.db.Stroke>()
+    private var recognitionJob: kotlinx.coroutines.Job? = null
 
     companion object {
         var forceUpdate = MutableSharedFlow<Rect?>()
@@ -148,6 +153,25 @@ class DrawCanvas(
                     }
                     coroutineScope.launch {
                         commitHistorySignal.emit(Unit)
+                    }
+                }
+                coroutineScope.launch {
+                    // Add the last stroke to the buffer
+                    val lastStroke = page.strokes.lastOrNull()
+                    if (lastStroke != null) {
+                        realTimeStrokeBuffer.add(lastStroke)
+                    }
+                    // Cancel any pending recognition
+                    recognitionJob?.cancel()
+                    // Start a new debounce job
+                    recognitionJob = coroutineScope.launch {
+                        kotlinx.coroutines.delay(800) // 800ms pause
+                        if (realTimeStrokeBuffer.isNotEmpty()) {
+                            val chunk = recognizeChunkAndExtractMetadata(context, realTimeStrokeBuffer, page.id)
+                            val db = AppDatabase.getDatabase(context)
+                            db.recognizedTextDao().insertChunk(chunk)
+                            realTimeStrokeBuffer.clear()
+                        }
                     }
                 }
             } else thread {

@@ -8,6 +8,7 @@ import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.TypeConverters
 import java.util.Date
 import java.util.UUID
 
@@ -30,6 +31,20 @@ data class RecognizedText(
     val updatedAt: Date = Date()
 )
 
+@Entity
+@TypeConverters(StrokeIdListConverter::class)
+data class RecognizedTextChunk(
+    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    val pageId: String,
+    val recognizedText: String,
+    val minX: Float,
+    val minY: Float,
+    val maxX: Float,
+    val maxY: Float,
+    val timestamp: Long,
+    val strokeIds: List<String>
+)
+
 @Dao
 interface RecognizedTextDao {
     @Insert
@@ -43,4 +58,17 @@ interface RecognizedTextDao {
 
     @Query("DELETE FROM RecognizedText WHERE noteId = :noteId AND pageId = :pageId")
     fun deleteByNoteAndPage(noteId: String, pageId: String)
+
+    // --- Chunked recognition methods ---
+    @Insert
+    fun insertChunk(chunk: RecognizedTextChunk): Long
+
+    @Update
+    fun updateChunk(chunk: RecognizedTextChunk)
+
+    @Query("SELECT * FROM RecognizedTextChunk WHERE pageId = :pageId ORDER BY minY ASC, minX ASC")
+    fun getChunksForPage(pageId: String): List<RecognizedTextChunk>
+
+    @Query("DELETE FROM RecognizedTextChunk WHERE pageId = :pageId")
+    fun deleteChunksByPage(pageId: String)
 } 

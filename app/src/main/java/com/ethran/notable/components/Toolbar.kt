@@ -63,6 +63,11 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GridOn
+import com.ethran.notable.db.RecognizedTextChunk
+import com.ethran.notable.utils.reconstructTextFromChunks
+import androidx.compose.material.AlertDialog
+import androidx.compose.material.Button
+import androidx.compose.material.icons.filled.TextFields
 
 fun presentlyUsedToolIcon(mode: Mode, pen: Pen): Int {
     return when (mode) {
@@ -104,6 +109,8 @@ fun Toolbar(
     var isStrokeSelectionOpen by remember { mutableStateOf(false) }
     var isMenuOpen by remember { mutableStateOf(false) }
     var isTemplateMenuOpen by remember { mutableStateOf(false) }
+    var showRecognizedTextDialog by remember { mutableStateOf(false) }
+    var recognizedTextCorpus by remember { mutableStateOf("") }
 
     val context = LocalContext.current
 
@@ -335,6 +342,17 @@ fun Toolbar(
                     }
                 }
 
+                ToolbarButton(
+                    vectorIcon = Icons.Default.TextFields,
+                    contentDescription = "Show Recognized Text",
+                    onSelect = {
+                        val db = AppDatabase.getDatabase(context)
+                        val chunks = db.recognizedTextDao().getChunksForPage(state.pageId)
+                        recognizedTextCorpus = reconstructTextFromChunks(chunks)
+                        showRecognizedTextDialog = true
+                    }
+                )
+
                 Spacer(Modifier.weight(1f))
 
                 Box(
@@ -447,6 +465,19 @@ fun Toolbar(
                     .fillMaxWidth()
                     .height(1.dp)
                     .background(Color.Black)
+            )
+        }
+
+        if (showRecognizedTextDialog) {
+            AlertDialog(
+                onDismissRequest = { showRecognizedTextDialog = false },
+                title = { Text("Recognized Text Corpus") },
+                text = { Text(recognizedTextCorpus) },
+                confirmButton = {
+                    Button(onClick = { showRecognizedTextDialog = false }) {
+                        Text("Close")
+                    }
+                }
             )
         }
     } else {

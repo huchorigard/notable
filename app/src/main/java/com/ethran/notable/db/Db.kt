@@ -11,12 +11,6 @@ import java.util.Date
 
 class Converters {
     @TypeConverter
-    fun fromListString(value: List<String>) = Json.encodeToString(value)
-
-    @TypeConverter
-    fun toListString(value: String) = Json.decodeFromString<List<String>>(value)
-
-    @TypeConverter
     fun fromListPoint(value: List<StrokePoint>) = Json.encodeToString(value)
 
     @TypeConverter
@@ -43,8 +37,8 @@ class Converters {
 class AutoMigration30to31 : AutoMigrationSpec
 
 @Database(
-    entities = [Folder::class, Notebook::class, Page::class, Stroke::class, Image::class, Kv::class, RecognizedText::class],
-    version = 31,
+    entities = [Folder::class, Notebook::class, Page::class, Stroke::class, Image::class, Kv::class, RecognizedText::class, RecognizedTextChunk::class],
+    version = 32,
     autoMigrations = [
         AutoMigration(19, 20),
         AutoMigration(20, 21),
@@ -60,7 +54,7 @@ class AutoMigration30to31 : AutoMigrationSpec
 
     ], exportSchema = true
 )
-@TypeConverters(Converters::class)
+@TypeConverters(Converters::class, StrokeIdListConverter::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun folderDao(): FolderDao
@@ -89,7 +83,7 @@ abstract class AppDatabase : RoomDatabase() {
                     INSTANCE =
                         Room.databaseBuilder(context, AppDatabase::class.java, dbFile.absolutePath)
                             .allowMainThreadQueries() // Avoid in production
-                            .addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_22_23)
+                            .addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_22_23, MIGRATION_31_32)
                             .build()
 
                 }

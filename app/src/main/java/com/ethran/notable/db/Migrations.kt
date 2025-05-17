@@ -31,3 +31,23 @@ val MIGRATION_22_23 = object : Migration(22, 23) {
         )
     }
 }
+
+val MIGRATION_31_32 = object : Migration(31, 32) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS RecognizedTextChunk (
+                id TEXT NOT NULL PRIMARY KEY,
+                pageId TEXT NOT NULL,
+                recognizedText TEXT NOT NULL,
+                minX REAL NOT NULL,
+                minY REAL NOT NULL,
+                maxX REAL NOT NULL,
+                maxY REAL NOT NULL,
+                timestamp INTEGER NOT NULL,
+                strokeIds TEXT NOT NULL
+            )
+            """.trimIndent()
+        )
+    }
+}

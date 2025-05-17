@@ -65,6 +65,8 @@ import com.ethran.notable.utils.chunkStrokesForDigitalInk
 import com.ethran.notable.utils.recognizeDigitalInkInChunks
 import com.ethran.notable.utils.recognizeDigitalInkOnPage
 import com.ethran.notable.utils.storeRecognizedTextResult
+import com.ethran.notable.db.RecognizedTextChunk
+import com.ethran.notable.utils.reconstructTextFromChunks
 
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -189,6 +191,8 @@ fun EditorView(
         InkaTheme {
             var showBitmapDialog by remember { mutableStateOf(false) }
             var bitmapToShow by remember { mutableStateOf<ImageBitmap?>(null) }
+            var showRecognizedTextDialog by remember { mutableStateOf(false) }
+            var recognizedTextCorpus by remember { mutableStateOf("") }
             EditorSurface(
                 state = editorState, page = page, history = history
             )
