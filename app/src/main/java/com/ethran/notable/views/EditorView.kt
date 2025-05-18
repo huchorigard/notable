@@ -75,6 +75,7 @@ import com.ethran.notable.utils.GemmaModelManager
 import com.ethran.notable.utils.GemmaMediaPipeSummarizer
 import androidx.compose.runtime.rememberUpdatedState
 import android.content.Context
+import kotlinx.coroutines.GlobalScope
 
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -145,21 +146,27 @@ fun EditorView(
         var shouldSummarize by remember { mutableStateOf(false) }
         DisposableEffect(Unit) {
             onDispose {
-                shouldSummarize = true
-            }
-        }
-        LaunchedEffect(shouldSummarize) {
-            if (shouldSummarize && _bookId != null) {
-                val db = AppDatabase.getDatabase(context)
-                val recognizedTextChunks = db.recognizedTextDao().getChunksForPage(_pageId)
-                val recognizedText = reconstructTextFromChunks(recognizedTextChunks)
-                val summary = summarizeWithLLM(context, recognizedText)
-                val pageSummary = PageSummary(
-                    pageId = _pageId,
-                    summaryText = summary,
-                    timestamp = System.currentTimeMillis()
-                )
-                db.pageSummaryDao().insert(pageSummary)
+                Log.i(TAG, "EditorView: onDispose called, triggering summary for page $_pageId")
+                val currentContext = context
+                val currentPageId = _pageId
+                GlobalScope.launch {
+                    try {
+                        Log.i(TAG, "EditorView: Starting summary for page $currentPageId (onDispose)")
+                        val db = AppDatabase.getDatabase(currentContext)
+                        val recognizedTextChunks = db.recognizedTextDao().getChunksForPage(currentPageId)
+                        val recognizedText = reconstructTextFromChunks(recognizedTextChunks)
+                        val summary = summarizeWithLLM(currentContext, recognizedText)
+                        val pageSummary = PageSummary(
+                            pageId = currentPageId,
+                            summaryText = summary,
+                            timestamp = System.currentTimeMillis()
+                        )
+                        db.pageSummaryDao().insert(pageSummary)
+                        Log.i(TAG, "EditorView: Summary for page $currentPageId saved to database (onDispose). Summary: $summary")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "EditorView: Summary failed for page $currentPageId (onDispose): ${e.message}", e)
+                    }
+                }
             }
         }
 
