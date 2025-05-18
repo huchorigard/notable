@@ -72,6 +72,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.ui.window.Dialog
+import com.ethran.notable.utils.OpenAISummarizer
+import com.ethran.notable.db.KvProxy
+import com.ethran.notable.db.USER_INFO_KEY
+import kotlinx.serialization.builtins.serializer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 
 fun presentlyUsedToolIcon(mode: Mode, pen: Pen): Int {
     return when (mode) {
@@ -115,6 +127,10 @@ fun Toolbar(
     var isTemplateMenuOpen by remember { mutableStateOf(false) }
     var showRecognizedTextDialog by remember { mutableStateOf(false) }
     var recognizedTextCorpus by remember { mutableStateOf("") }
+    var showAIDialog by remember { mutableStateOf(false) }
+    var aiPrompt by remember { mutableStateOf("") }
+    var aiResponse by remember { mutableStateOf("") }
+    var isAILoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
 
@@ -131,7 +147,7 @@ fun Toolbar(
                 val copiedFile = createFileFromContentUri(context, uri)
 
                 // Set isImageLoaded to true
-                Log.i(
+                android.util.Log.i(
                     "InsertImage",
                     "Image was received and copied, it is now at:${copiedFile.toUri()}"
                 )
@@ -295,7 +311,7 @@ fun Toolbar(
                     iconId = R.drawable.image,
                     contentDescription = "library",
                     onSelect = {
-                        Log.i("InsertImage", "Launching image picker...")
+                        android.util.Log.i("InsertImage", "Launching image picker...")
                         pickMedia.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly))
                     }
                 )
@@ -457,7 +473,7 @@ fun Toolbar(
                             val strokes = state.pageView.strokes
                             if (noteId != null && strokes.isNotEmpty()) {
                                 val recognizedText = recognizeDigitalInkOnPage(context, strokes)
-                                Log.i("HandwritingRecognition", "Recognized text: $recognizedText")
+                                android.util.Log.i("HandwritingRecognition", "Recognized text: $recognizedText")
                                 storeRecognizedTextResult(AppDatabase.getDatabase(context).recognizedTextDao(), noteId, pageId, recognizedText)
                                 if (recognizedText == "[Recognition failed]") {
                                     Toast.makeText(context, "Recognition failed", Toast.LENGTH_LONG).show()
@@ -483,6 +499,11 @@ fun Toolbar(
                         navController = navController,
                         state = state,
                         onClose = { isMenuOpen = false })
+                }
+
+                // Add AI button to the toolbar
+                IconButton(onClick = { showAIDialog = true }) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = "AI Assistant")
                 }
             }
 
@@ -511,6 +532,87 @@ fun Toolbar(
                     }
                 }
             )
+        }
+
+        // AI Dialog
+        if (showAIDialog) {
+            Popup(
+                alignment = Alignment.TopCenter,
+                onDismissRequest = { showAIDialog = false },
+                properties = PopupProperties(focusable = true) // Allow focus for scrolling
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                ) {
+                    Column(
+                        Modifier
+                            .padding(16.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text("AI Assistant", fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(4.dp))
+                        // --- Place for developer prompt customization ---
+                        val customPrompt = "You are a thoughtful and insightful assistant designed to help users reflect deeply on their thoughts and experiences.\n\nBelow is a note written by the user. Read the note carefully and generate 1 to 3 thought-provoking questions that encourage deeper reflection. These questions should help the user explore their emotions, motivations, assumptions, or possible next steps.\n\nAim for depth and clarity, not length. Your questions should feel natural, empathetic, and open-ended—like those of a skilled coach or therapist.\n\nUser's note:"
+                        // ------------------------------------------------
+                        Button(
+                            onClick = {
+                                isAILoading = true
+                                aiResponse = ""
+                                scope.launch {
+                                    try {
+                                        val db = AppDatabase.getDatabase(context)
+                                        val chunks = db.recognizedTextDao().getChunksForPage(state.pageId)
+                                        val recognizedText = reconstructTextFromChunks(chunks)
+                                        val kv = KvProxy(context)
+                                        val userInfo = kv.get(USER_INFO_KEY, String.serializer()) ?: ""
+                                        val prompt = buildString {
+                                            append(customPrompt)
+                                            append("\n")
+                                            append("<userInfo>\n$userInfo\n</userInfo>\n")
+                                            append("This is the note text, careful the text is automatically generated from handwritten note, so some words might be misplaced or incomplete. <note>\n$recognizedText\n</note>\n")
+                                        }
+                                        android.util.Log.i("OpenAI-AIButton", "Prompt sent to OpenAI: $prompt")
+                                        val apiKey = "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"
+                                        val result = OpenAISummarizer.summarize(apiKey, prompt)
+                                        withContext(Dispatchers.Main) {
+                                            aiResponse = result
+                                        }
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) {
+                                            android.util.Log.e("OpenAI-AIButton", "Error during OpenAI call", e)
+                                            aiResponse = "[AI error: ${e.message}]"
+                                        }
+                                    } finally {
+                                        withContext(Dispatchers.Main) {
+                                            isAILoading = false
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !isAILoading
+                        ) {
+                            Text(if (isAILoading) "Loading..." else "Ask AI")
+                        }
+                        if (isAILoading) {
+                            Spacer(Modifier.height(8.dp))
+                            androidx.compose.material.CircularProgressIndicator()
+                        }
+                        if (aiResponse.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFE3F2FD))
+                                    .padding(8.dp)
+                            ) {
+                                Text(aiResponse)
+                            }
+                        }
+                    }
+                }
+            }
         }
     } else {
         ToolbarButton(

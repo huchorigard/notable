@@ -7,6 +7,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 object OpenAISummarizer {
     private val client = OkHttpClient()
@@ -15,6 +17,7 @@ object OpenAISummarizer {
     private const val TAG = "OpenAISummarizer"
 
     suspend fun summarize(apiKey: String, prompt: String): String {
+        Log.i(TAG, "In the summarize function")
         return try {
             val json = JSONObject().apply {
                 put("model", MODEL)
@@ -26,31 +29,52 @@ object OpenAISummarizer {
                 put("temperature", 0.7)
                 put("top_p", 1.0)
             }
+            Log.i(TAG, "json defined $json")
             val body = json.toString().toRequestBody("application/json".toMediaType())
+            Log.i(TAG, "body defined $body")
             val request = Request.Builder()
                 .url(API_URL)
                 .addHeader("Authorization", "Bearer $apiKey")
                 .addHeader("Content-Type", "application/json")
                 .post(body)
                 .build()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                val errorBody = response.body?.string() ?: "No error body"
-                Log.e(TAG, "OpenAI API error: code=${response.code}, message=${response.message}, body=$errorBody")
-                return "[Summary error: OpenAI API error ${response.code} - ${response.message}]"
+            Log.i(TAG, "request defined $request")
+            return withContext(Dispatchers.IO) {
+                val response = try {
+                    client.newCall(request).execute()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error executing request", e)
+                    throw e
+                }
+                Log.i(TAG, "response defined $response")
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string() ?: "No error body"
+                    Log.e(TAG, "OpenAI API error: code=${response.code}, message=${response.message}, body=$errorBody")
+                    return@withContext "[Summary error: OpenAI API error ${response.code} - ${response.message}]"
+                }
+                val responseBody = response.body?.string()
+                Log.i(TAG, "OpenAI API raw response body: $responseBody")
+                if (responseBody == null) return@withContext "[Summary error: empty response]"
+                try {
+                    Log.i(TAG, "Parsing OpenAI response JSON")
+                    val responseJson = JSONObject(responseBody)
+                    val summary = responseJson
+                        .getJSONArray("choices")
+                        .getJSONObject(0)
+                        .getJSONObject("message")
+                        .getString("content")
+                        .trim()
+                    Log.i(TAG, "Parsed summary: $summary")
+                    summary
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing OpenAI response: $responseBody", e)
+                    "[Summary error: ${e.message ?: "unknown error"}]"
+                }
             }
-            val responseBody = response.body?.string() ?: return "[Summary error: empty response]"
-            //Log.i(TAG, "OpenAI API response: $responseBody")
-            val responseJson = JSONObject(responseBody)
-            val summary = responseJson
-                .getJSONArray("choices")
-                .getJSONObject(0)
-                .getJSONObject("message")
-                .getString("content")
-                .trim()
-            summary
         } catch (e: Exception) {
-            "[Summary error: ${e.message}]"
+            Log.e(TAG, "Exception in summarize: ${e::class.java.simpleName}: ${e.message}", e)
+            e.printStackTrace()
+            "[Summary error: ${e.message ?: "unknown error"}]"
         }
     }
 } 
