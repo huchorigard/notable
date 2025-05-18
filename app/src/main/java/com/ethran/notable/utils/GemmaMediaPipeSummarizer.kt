@@ -6,24 +6,15 @@ import com.google.mediapipe.tasks.genai.llminference.LlmInference.Backend
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-// Define a minimal Model enum for demonstration (expand as needed)
-enum class Model(
-    val filename: String,
-    val preferredBackend: Backend?,
-    val temperature: Float = 1.0f,
-    val topK: Int = 64,
-    val topP: Float = 0.95f
-) {
-    GEMMA3_1B_IT_CPU(
-        filename = "gemma-3-1b-it-q4_0.task",
-        preferredBackend = Backend.CPU
-    )
-}
+// Model parameters (hardcoded)
+private const val MODEL_FILENAME = "gemma-3-1b-it-q4_0.task"
+private val PREFERRED_BACKEND = Backend.CPU
+private const val TEMPERATURE = 0.8f
+private const val TOP_K = 40
+private const val TOP_P = 0.9f
 
 object GemmaMediaPipeSummarizer {
     private var llmInference: LlmInference? = null
-    // Select the model you want to use
-    private val model = Model.GEMMA3_1B_IT_CPU
     private val inferenceMutex = Mutex()
 
     private fun loadModel(context: Context): Boolean {
@@ -40,15 +31,27 @@ object GemmaMediaPipeSummarizer {
         return try {
             val builder = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelFile.absolutePath)
-                .setMaxTopK(model.topK)
+                .setMaxTopK(TOP_K)
             // Set preferred backend if available
-            model.preferredBackend?.let { backend ->
-                try {
-                    val method = builder.javaClass.getMethod("setPreferredBackend", Backend::class.java)
-                    method.invoke(builder, backend)
-                } catch (e: Exception) {
-                    android.util.Log.w("GemmaMediaPipeSummarizer", "setPreferredBackend not available in this API version.")
-                }
+            try {
+                val method = builder.javaClass.getMethod("setPreferredBackend", Backend::class.java)
+                method.invoke(builder, PREFERRED_BACKEND)
+            } catch (e: Exception) {
+                android.util.Log.w("GemmaMediaPipeSummarizer", "setPreferredBackend not available in this API version.")
+            }
+            // Set temperature if available
+            try {
+                val method = builder.javaClass.getMethod("setTemperature", Float::class.java)
+                method.invoke(builder, TEMPERATURE)
+            } catch (e: Exception) {
+                android.util.Log.w("GemmaMediaPipeSummarizer", "setTemperature not available in this API version.")
+            }
+            // Set topP if available
+            try {
+                val method = builder.javaClass.getMethod("setTopP", Float::class.java)
+                method.invoke(builder, TOP_P)
+            } catch (e: Exception) {
+                android.util.Log.w("GemmaMediaPipeSummarizer", "setTopP not available in this API version.")
             }
             val options = builder.build()
             llmInference = LlmInference.createFromOptions(context, options)
