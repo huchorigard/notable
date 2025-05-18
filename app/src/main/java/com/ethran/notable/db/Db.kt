@@ -39,8 +39,8 @@ class Converters {
 class AutoMigration30to31 : AutoMigrationSpec
 
 @Database(
-    entities = [Folder::class, Notebook::class, Page::class, Stroke::class, Image::class, Kv::class, RecognizedText::class, RecognizedTextChunk::class, NoteSummary::class],
-    version = 33,
+    entities = [Folder::class, Notebook::class, Page::class, Stroke::class, Image::class, Kv::class, RecognizedText::class, RecognizedTextChunk::class, PageSummary::class],
+    version = 34,
     autoMigrations = [
         AutoMigration(19, 20),
         AutoMigration(20, 21),
@@ -65,7 +65,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun strokeDao(): StrokeDao
     abstract fun ImageDao(): ImageDao
     abstract fun recognizedTextDao(): RecognizedTextDao
-    abstract fun noteSummaryDao(): NoteSummaryDao
+    abstract fun pageSummaryDao(): PageSummaryDao
 
     companion object {
         private var INSTANCE: AppDatabase? = null
@@ -85,8 +85,8 @@ abstract class AppDatabase : RoomDatabase() {
                     val MIGRATION_32_33 = object : Migration(32, 33) {
                         override fun migrate(database: SupportSQLiteDatabase) {
                             database.execSQL("""
-                                CREATE TABLE IF NOT EXISTS NoteSummary (
-                                    noteId TEXT NOT NULL PRIMARY KEY,
+                                CREATE TABLE IF NOT EXISTS PageSummary (
+                                    pageId TEXT NOT NULL PRIMARY KEY,
                                     summaryText TEXT NOT NULL,
                                     timestamp INTEGER NOT NULL
                                 )
@@ -97,6 +97,7 @@ abstract class AppDatabase : RoomDatabase() {
                     INSTANCE =
                         Room.databaseBuilder(context, AppDatabase::class.java, dbFile.absolutePath)
                             .allowMainThreadQueries() // Avoid in production
+                            .fallbackToDestructiveMigration()
                             .addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_22_23, MIGRATION_31_32, MIGRATION_32_33)
                             .build()
 

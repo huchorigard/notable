@@ -67,8 +67,8 @@ import com.ethran.notable.utils.recognizeDigitalInkOnPage
 import com.ethran.notable.utils.storeRecognizedTextResult
 import com.ethran.notable.db.RecognizedTextChunk
 import com.ethran.notable.utils.reconstructTextFromChunks
-import com.ethran.notable.db.NoteSummary
-import com.ethran.notable.db.NoteSummaryDao
+import com.ethran.notable.db.PageSummary
+import com.ethran.notable.db.PageSummaryDao
 import java.util.Date
 import kotlinx.coroutines.runBlocking
 import com.ethran.notable.utils.GemmaModelManager
@@ -154,12 +154,12 @@ fun EditorView(
                 val recognizedTextChunks = db.recognizedTextDao().getChunksForPage(_pageId)
                 val recognizedText = reconstructTextFromChunks(recognizedTextChunks)
                 val summary = summarizeWithLLM(context, recognizedText)
-                val noteSummary = NoteSummary(
-                    noteId = _bookId,
+                val pageSummary = PageSummary(
+                    pageId = _pageId,
                     summaryText = summary,
                     timestamp = System.currentTimeMillis()
                 )
-                db.noteSummaryDao().insert(noteSummary)
+                db.pageSummaryDao().insert(pageSummary)
             }
         }
 

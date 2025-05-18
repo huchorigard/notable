@@ -9,23 +9,23 @@ import androidx.room.Query
 import androidx.room.Update
 
 @Entity
-data class NoteSummary(
-    @PrimaryKey val noteId: String,
+data class PageSummary(
+    @PrimaryKey val pageId: String,
     val summaryText: String,
     val timestamp: Long
 )
 
 @Dao
-interface NoteSummaryDao {
+interface PageSummaryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insert(summary: NoteSummary)
+    fun insert(summary: PageSummary)
 
     @Update
-    fun update(summary: NoteSummary)
+    fun update(summary: PageSummary)
 
-    @Query("SELECT * FROM NoteSummary WHERE noteId = :noteId")
-    fun getSummary(noteId: String): NoteSummary?
+    @Query("SELECT * FROM PageSummary WHERE pageId = :pageId")
+    fun getSummary(pageId: String): PageSummary?
 
-    @Query("DELETE FROM NoteSummary WHERE noteId = :noteId")
-    fun deleteSummary(noteId: String)
+    @Query("DELETE FROM PageSummary WHERE pageId = :pageId")
+    fun deleteSummary(pageId: String)
 } 
