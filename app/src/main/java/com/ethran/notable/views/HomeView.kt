@@ -65,6 +65,7 @@ import com.ethran.notable.modals.AppSettingsModal
 import com.ethran.notable.modals.FolderConfigDialog
 import com.ethran.notable.modals.GlobalAppSettings
 import com.ethran.notable.modals.NotebookConfigDialog
+import com.ethran.notable.modals.UserInfoDialog
 import com.ethran.notable.utils.isLatestVersion
 import com.ethran.notable.utils.noRippleClickable
 import compose.icons.FeatherIcons
@@ -111,6 +112,8 @@ fun Library(navController: NavController, folderId: String? = null) {
     var floatingEditorPageId by remember { mutableStateOf<String?>(null) }
 
     val snackManager = LocalSnackContext.current
+
+    var showUserInfo by remember { mutableStateOf(false) }
 
     Column(
         Modifier.fillMaxSize()
@@ -236,7 +239,11 @@ fun Library(navController: NavController, folderId: String? = null) {
         }
     }
 
-    if (isSettingsOpen) AppSettingsModal(onClose = { isSettingsOpen = false })
+    if (isSettingsOpen) AppSettingsModal(
+        onClose = { isSettingsOpen = false },
+        onUserInfo = { showUserInfo = true }
+    )
+    if (showUserInfo) UserInfoDialog(onClose = { showUserInfo = false })
 
 // Add the FloatingEditorView here
     if (showFloatingEditor && floatingEditorPageId != null) {

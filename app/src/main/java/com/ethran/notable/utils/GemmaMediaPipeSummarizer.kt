@@ -5,6 +5,9 @@ import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.google.mediapipe.tasks.genai.llminference.LlmInference.Backend
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.ethran.notable.db.KvProxy
+import com.ethran.notable.db.USER_INFO_KEY
+import kotlinx.serialization.builtins.serializer
 
 // Model parameters (hardcoded)
 private const val MODEL_FILENAME = "gemma-3-1b-it-q4_0.task"
@@ -12,6 +15,7 @@ private val PREFERRED_BACKEND = Backend.CPU
 private const val TEMPERATURE = 0.8f
 private const val TOP_K = 40
 private const val TOP_P = 0.9f
+private var MAX_TOKENS = 1024
 
 object GemmaMediaPipeSummarizer {
     private var llmInference: LlmInference? = null
@@ -31,6 +35,7 @@ object GemmaMediaPipeSummarizer {
         return try {
             val builder = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelFile.absolutePath)
+                .setMaxTokens(MAX_TOKENS)
                 .setMaxTopK(TOP_K)
             // Set preferred backend if available
             try {
@@ -65,13 +70,16 @@ object GemmaMediaPipeSummarizer {
 
     suspend fun summarize(context: Context, text: String): String {
         android.util.Log.i("GemmaMediaPipeSummarizer", "Starting summarization. Input text: $text")
+        val kv = KvProxy(context)
+        val userInfo = kv.get(USER_INFO_KEY, String.serializer())
+        val userInfoPrompt = if (!userInfo.isNullOrBlank()) "\nUser info: $userInfo\n" else ""
         if (!loadModel(context)) {
             android.util.Log.e("GemmaMediaPipeSummarizer", "[Summary unavailable: model not loaded]")
             return "[Summary unavailable: model not loaded]"
         }
         return inferenceMutex.withLock {
             try {
-                val summary = llmInference?.generateResponse(text) ?: "[Summary error: no response]"
+                val summary = llmInference?.generateResponse(userInfoPrompt + text) ?: "[Summary error: no response]"
                 android.util.Log.i("GemmaMediaPipeSummarizer", "Summary output: $summary")
                 summary
             } catch (e: Exception) {

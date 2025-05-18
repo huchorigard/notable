@@ -110,10 +110,9 @@ data class AppSettings(
 }
 
 @Composable
-fun AppSettingsModal(onClose: () -> Unit) {
+fun AppSettingsModal(onClose: () -> Unit, onUserInfo: () -> Unit = {}) {
     val context = LocalContext.current
     val kv = KvProxy(context)
-
 
     val settings = GlobalAppSettings.current ?: return
 
@@ -151,6 +150,10 @@ fun AppSettingsModal(onClose: () -> Unit) {
                 EditGestures(kv, settings)
                 GitHubSponsorButton()
                 ShowUpdateButton(context)
+                Spacer(Modifier.height(20.dp))
+                Button(onClick = { onUserInfo() }) {
+                    Text("User Information")
+                }
             }
         }
     }

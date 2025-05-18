@@ -17,6 +17,7 @@ import io.shipbook.shipbooksdk.Log
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 
+const val USER_INFO_KEY = "user_info"
 
 @Entity
 data class Kv(
