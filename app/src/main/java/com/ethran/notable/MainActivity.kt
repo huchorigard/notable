@@ -170,7 +170,7 @@ class MainActivity : ComponentActivity() {
                                 Button(onClick = {
                                     showDownloadDialog = false
                                 }) {
-                                    Text("No, exit app")
+                                    Text("Download later")
                                 }
                             }
                         }
