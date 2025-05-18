@@ -6,14 +6,14 @@ import com.google.mediapipe.tasks.genai.llminference.LlmInference.Backend
 
 // Define a minimal Model enum for demonstration (expand as needed)
 enum class Model(
-    val path: String,
+    val filename: String,
     val preferredBackend: Backend?,
     val temperature: Float = 1.0f,
     val topK: Int = 64,
     val topP: Float = 0.95f
 ) {
     GEMMA3_1B_IT_CPU(
-        path = "/data/local/tmp/Gemma3-1B-IT_multi-prefill-seq_q4_ekv2048.task",
+        filename = "gemma-3-1b-it-q4_0.task",
         preferredBackend = Backend.CPU
     )
 }
@@ -29,7 +29,7 @@ object GemmaMediaPipeSummarizer {
             android.util.Log.i("GemmaMediaPipeSummarizer", "LLM model already loaded.")
             return true
         }
-        val modelFile = java.io.File(model.path)
+        val modelFile = GemmaModelManager.getModelFile(context)
         if (!modelFile.exists()) {
             android.util.Log.e("GemmaMediaPipeSummarizer", "Model file does not exist: ${modelFile.absolutePath}")
             return false
