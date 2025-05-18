@@ -105,7 +105,7 @@ fun QuickNav(navController: NavController, onClose: () -> Unit) {
             Row {
                 LazyVerticalGrid(
                     modifier = Modifier.fillMaxWidth(),
-                    columns = GridCells.Adaptive(minSize = 80.dp),
+                    columns = GridCells.Adaptive(minSize = 104.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     content = {

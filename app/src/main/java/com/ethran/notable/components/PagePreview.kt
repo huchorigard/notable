@@ -12,31 +12,38 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.rememberAsyncImagePainter
 import java.io.File
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material.Text
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
+import com.ethran.notable.db.AppDatabase
 
 @Composable
 fun PagePreview(modifier: Modifier, pageId: String) {
     val context = LocalContext.current
-    val imgFile = remember (pageId){
-        File(context.filesDir, "pages/previews/thumbs/$pageId")
+    var summary by remember(pageId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(pageId) {
+        val db = AppDatabase.getDatabase(context)
+        summary = db.pageSummaryDao().getSummary(pageId)?.summaryText
     }
-
-    var imgBitmap: Bitmap? = null
-    if (imgFile.exists()) {
-        imgBitmap = remember(pageId) {
-            BitmapFactory.decodeFile(imgFile.absolutePath)
+    Box(modifier = modifier.background(Color.LightGray)) {
+        if (summary != null) {
+            Text(
+                text = summary!!,
+                modifier = Modifier.padding(8.dp),
+                color = Color.Black,
+                maxLines = 8 // limit to a few lines for preview
+            )
+        } else {
+            Text(
+                text = "No summary available",
+                modifier = Modifier.padding(8.dp),
+                color = Color.Gray
+            )
         }
     }
-
-    /*if(imgBitmap == null) {
-        Text("No preview available yet", modifier.then(
-                Modifier.padding(10.dp)
-            ))
-    }else {*/
-    Image(
-        painter = rememberAsyncImagePainter(model = imgBitmap),
-        contentDescription = "Image",
-        contentScale = ContentScale.FillWidth,
-        modifier = modifier.then(Modifier.background(Color.LightGray))
-    )
-    //}
 }
