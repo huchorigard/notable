@@ -76,6 +76,10 @@ import com.ethran.notable.utils.GemmaMediaPipeSummarizer
 import androidx.compose.runtime.rememberUpdatedState
 import android.content.Context
 import kotlinx.coroutines.GlobalScope
+import com.ethran.notable.utils.OpenAISummarizer
+import com.ethran.notable.db.KvProxy
+import com.ethran.notable.db.USER_INFO_KEY
+import kotlinx.serialization.builtins.serializer
 
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -155,7 +159,7 @@ fun EditorView(
                         val db = AppDatabase.getDatabase(currentContext)
                         val recognizedTextChunks = db.recognizedTextDao().getChunksForPage(currentPageId)
                         val recognizedText = reconstructTextFromChunks(recognizedTextChunks)
-                        val summary = summarizeWithLLM(currentContext, recognizedText)
+                        val summary = summarizeWithLLM(currentContext, currentPageId, recognizedText)
                         val pageSummary = PageSummary(
                             pageId = currentPageId,
                             summaryText = summary,
@@ -269,44 +273,56 @@ fun EditorView(
     }
 }
 
-suspend fun summarizeWithLLM(context: Context, text: String): String {
-    if (!GemmaModelManager.isModelDownloaded(context)) {
-        val ok = GemmaModelManager.downloadModel(context)
-        if (!ok) {
-            return "[Summary unavailable: model not downloaded]"
-        }
-    }
+suspend fun summarizeWithLLM(context: Context, pageId: String, text: String): String {
+    // Retrieve the current summary from the database if it exists
+    val db = com.ethran.notable.db.AppDatabase.getDatabase(context)
+    val currentSummary = db.pageSummaryDao().getSummary(pageId)?.summaryText
+    val currentSummaryPrompt = if (!currentSummary.isNullOrBlank()) "Current summary: $currentSummary\n" else ""
+
+    // Retrieve user info from settings
+    val kv = KvProxy(context)
+    val userInfo = kv.get(USER_INFO_KEY, String.serializer())
+    val userInfoPrompt = if (!userInfo.isNullOrBlank()) "User info: $userInfo\n" else ""
+
     val prompt = """
-
+<system>
 You are an AI assistant for a note-taking application. Your task is to generate a concise and descriptive summary for each user's note. This summary will be displayed on a small card in the app's interface, allowing users to quickly understand the content of the note without opening it.
+</system>
 
-Instructions:
-
+<instructions>
 Analyze the Content: Read the provided note text carefully to identify the main topics, key ideas, events, or a brief emotional sentiment if prominent.
+Careful, the text that you are receiving is recognised from handwritten characters. There might be letters missing, words looking weird, you'll have to make some guess sometimes.
 Be Descriptive: The summary must accurately reflect the core essence of the note. It should give the user a clear indication of what the note is about.
 Be Concise: The summary should be very short, ideally a single phrase or a very short sentence, suitable for a small display area. Think of it as a "glanceable" preview.
 Focus on Key Information: Extract the most important information that would help a user recall or identify the note's purpose.
 Neutral Tone (Generally): Unless the note's content is explicitly and overwhelmingly emotional, maintain a relatively neutral and informative tone. If strong emotion is the core of the note, a hint of it can be included if done concisely.
+</instructions>
 
-Output:
-Generate a single, brief, and descriptive summary of the note.
+<output>
+Generate a single, brief, and descriptive summary of the note (10-18 words). Do not use " before/after the answer, just plain text.
+If a summary already exists, only edit it if it does not fit the note content or lacks important information. Otherwise, keep the summary as is.
+</output>
 
-Example of good output (based on the UI provided):
 
-"Explored breaking up with my ex. Reasons for the pain."
-"Brainstorming session for new project ideas."
-"Recipe for sourdough bread and baking notes."
-"Reflections on yesterday's meeting with John."
-Example of what to avoid:
+If a summary already exists, only edit it if it does not fit the note content or lacks important information. Otherwise, keep the summary as is.
+<current_summary>
+$currentSummaryPrompt</current_summary>
 
-Vague summaries like: "Note from today," "Some thoughts," "Important."
-Summaries that are too long to fit comfortably in a small box.
-Summaries that don't accurately represent the note's content.
 
-Here is the input from the user:
-$text"""
+This is background information that the user filled so that you can better understand them.
+<user_info>
+$userInfoPrompt</user_info>
 
-    return GemmaMediaPipeSummarizer.summarize(context, prompt)
+Here is the note that the user wrote. Careful, the text is generated automatically from a handwritten algorithm, so the words might be wrongly spelled, or some words might be missing.
+<note>
+$text
+</note>
+"""
+
+    // Hardcoded API key (replace with your real key)
+    val openAiApiKey = "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"
+    Log.i("EditorView", "Sending prompt to OpenAI: $prompt")
+    return OpenAISummarizer.summarize(openAiApiKey, prompt)
 }
 
 
