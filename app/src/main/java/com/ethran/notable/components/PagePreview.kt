@@ -21,16 +21,43 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import com.ethran.notable.db.AppDatabase
+import java.text.SimpleDateFormat
+import java.util.Locale
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.sp
 
 @Composable
 fun PagePreview(modifier: Modifier, pageId: String) {
     val context = LocalContext.current
     var summary by remember(pageId) { mutableStateOf<String?>(null) }
+    var updatedAt by remember(pageId) { mutableStateOf<Long?>(null) }
     LaunchedEffect(pageId) {
         val db = AppDatabase.getDatabase(context)
         summary = db.pageSummaryDao().getSummary(pageId)?.summaryText
+        val page = db.pageDao().getById(pageId)
+        updatedAt = page?.updatedAt?.time
     }
     Box(modifier = modifier.background(Color.Transparent)) {
+        if (updatedAt != null) {
+            val now = System.currentTimeMillis()
+            val millisInDay = 24 * 60 * 60 * 1000
+            val daysAgo = ((now - updatedAt!!) / millisInDay).toInt()
+            val dateString = remember(updatedAt) {
+                when {
+                    daysAgo < 1 -> "Today"
+                    daysAgo < 10 -> "${daysAgo}d ago"
+                    else -> SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(java.util.Date(updatedAt!!))
+                }
+            }
+            Text(
+                text = dateString,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp),
+                color = Color.Gray,
+                fontSize = 10.sp
+            )
+        }
         if (summary != null) {
             Text(
                 text = summary!!,

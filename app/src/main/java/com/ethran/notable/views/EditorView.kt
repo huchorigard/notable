@@ -276,7 +276,37 @@ suspend fun summarizeWithLLM(context: Context, text: String): String {
             return "[Summary unavailable: model not downloaded]"
         }
     }
-    return GemmaMediaPipeSummarizer.summarize(context, text)
+    val prompt = """
+
+You are an AI assistant for a note-taking application. Your task is to generate a concise and descriptive summary for each user's note. This summary will be displayed on a small card in the app's interface, allowing users to quickly understand the content of the note without opening it.
+
+Instructions:
+
+Analyze the Content: Read the provided note text carefully to identify the main topics, key ideas, events, or a brief emotional sentiment if prominent.
+Be Descriptive: The summary must accurately reflect the core essence of the note. It should give the user a clear indication of what the note is about.
+Be Concise: The summary should be very short, ideally a single phrase or a very short sentence, suitable for a small display area. Think of it as a "glanceable" preview.
+Focus on Key Information: Extract the most important information that would help a user recall or identify the note's purpose.
+Neutral Tone (Generally): Unless the note's content is explicitly and overwhelmingly emotional, maintain a relatively neutral and informative tone. If strong emotion is the core of the note, a hint of it can be included if done concisely.
+
+Output:
+Generate a single, brief, and descriptive summary of the note.
+
+Example of good output (based on the UI provided):
+
+"Explored breaking up with my ex. Reasons for the pain."
+"Brainstorming session for new project ideas."
+"Recipe for sourdough bread and baking notes."
+"Reflections on yesterday's meeting with John."
+Example of what to avoid:
+
+Vague summaries like: "Note from today," "Some thoughts," "Important."
+Summaries that are too long to fit comfortably in a small box.
+Summaries that don't accurately represent the note's content.
+
+Here is the input from the user:
+$text"""
+
+    return GemmaMediaPipeSummarizer.summarize(context, prompt)
 }
 
 

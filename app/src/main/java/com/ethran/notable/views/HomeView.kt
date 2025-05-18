@@ -169,64 +169,7 @@ fun Library(navController: NavController, folderId: String? = null) {
 
             Spacer(Modifier.height(10.dp))
 
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                item {
-                    // Add new folder row
-                    Row(
-                        Modifier
-                            .noRippleClickable {
-                                val folder = Folder(parentFolderId = folderId)
-                                appRepository.folderRepository.create(folder)
-                            }
-                            .border(0.5.dp, Color.Black)
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
-                    ) {
-                        Icon(
-                            imageVector = FeatherIcons.FolderPlus,
-                            contentDescription = "Add Folder Icon",
-                            Modifier.height(20.dp)
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(text = "Add new folder")
-                    }
-                }
-                if (folders?.isNotEmpty() == true) {
-                    items(folders!!) { folder ->
-                        var isFolderSettingsOpen by remember { mutableStateOf(false) }
-                        if (isFolderSettingsOpen) FolderConfigDialog(
-                            folderId = folder.id,
-                            onClose = {
-                                Log.i(TAG, "Closing Directory Dialog")
-                                isFolderSettingsOpen = false
-                            })
-                        Row(
-                            Modifier
-                                .combinedClickable(
-                                    onClick = {
-                                        navController.navigate("library?folderId=${folder.id}")
-                                    },
-                                    onLongClick = {
-                                        isFolderSettingsOpen = !isFolderSettingsOpen
-                                    },
-                                )
-                                .border(0.5.dp, Color.Black)
-                                .padding(10.dp, 5.dp)
-                        ) {
-                            Icon(
-                                imageVector = FeatherIcons.Folder,
-                                contentDescription = "folder icon",
-                                Modifier.height(20.dp)
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(text = folder.title)
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(10.dp))
+            // Removed folder UI (Add new folder row and folder list)
             Text(text = "Quick pages")
             Spacer(Modifier.height(10.dp))
 
@@ -239,7 +182,7 @@ fun Library(navController: NavController, folderId: String? = null) {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .width(100.dp)
+                            .width(130.dp)
                             .aspectRatio(3f / 4f)
                             .border(1.dp, Color.Gray, RectangleShape)
                             .noRippleClickable {
@@ -276,7 +219,7 @@ fun Library(navController: NavController, folderId: String? = null) {
                                             isPageSelected = true
                                         },
                                     )
-                                    .width(100.dp)
+                                    .width(130.dp)
                                     .aspectRatio(3f / 4f)
                                     .border(1.dp, Color.Black, RectangleShape),
                                 pageId = pageId
