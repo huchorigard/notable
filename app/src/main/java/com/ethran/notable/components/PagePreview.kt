@@ -30,7 +30,7 @@ fun PagePreview(modifier: Modifier, pageId: String) {
         val db = AppDatabase.getDatabase(context)
         summary = db.pageSummaryDao().getSummary(pageId)?.summaryText
     }
-    Box(modifier = modifier.background(Color.LightGray)) {
+    Box(modifier = modifier.background(Color.Transparent)) {
         if (summary != null) {
             Text(
                 text = summary!!,
