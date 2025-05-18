@@ -201,7 +201,6 @@ dependencies {
 
     implementation 'org.tensorflow:tensorflow-lite:2.14.0'
 
-    implementation 'com.google.mediapipe:tasks-genai:0.10.22'
 }
 
 tasks.register('printVersionName') {

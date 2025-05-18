@@ -2,8 +2,26 @@ package com.ethran.notable.utils
 
 import android.content.Context
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import com.google.mediapipe.tasks.genai.llminference.LlmInference.Backend
+
+// Define a minimal Model enum for demonstration (expand as needed)
+enum class Model(
+    val path: String,
+    val preferredBackend: Backend?,
+    val temperature: Float = 1.0f,
+    val topK: Int = 64,
+    val topP: Float = 0.95f
+) {
+    GEMMA3_1B_IT_CPU(
+        path = "/data/local/tmp/Gemma3-1B-IT_multi-prefill-seq_q4_ekv2048.task",
+        preferredBackend = Backend.CPU
+    )
+}
+
 object GemmaMediaPipeSummarizer {
     private var llmInference: LlmInference? = null
+    // Select the model you want to use
+    private val model = Model.GEMMA3_1B_IT_CPU
 
     private fun loadModel(context: Context): Boolean {
         android.util.Log.i("GemmaMediaPipeSummarizer", "Attempting to load LLM model...")
@@ -11,16 +29,25 @@ object GemmaMediaPipeSummarizer {
             android.util.Log.i("GemmaMediaPipeSummarizer", "LLM model already loaded.")
             return true
         }
-        val modelFile = GemmaModelManager.getModelFile(context)
+        val modelFile = java.io.File(model.path)
         if (!modelFile.exists()) {
             android.util.Log.e("GemmaMediaPipeSummarizer", "Model file does not exist: ${modelFile.absolutePath}")
             return false
         }
         return try {
-            val options = LlmInference.LlmInferenceOptions.builder()
+            val builder = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelFile.absolutePath)
-                .setMaxTopK(64)
-                .build()
+                .setMaxTopK(model.topK)
+            // Set preferred backend if available
+            model.preferredBackend?.let { backend ->
+                try {
+                    val method = builder.javaClass.getMethod("setPreferredBackend", Backend::class.java)
+                    method.invoke(builder, backend)
+                } catch (e: Exception) {
+                    android.util.Log.w("GemmaMediaPipeSummarizer", "setPreferredBackend not available in this API version.")
+                }
+            }
+            val options = builder.build()
             llmInference = LlmInference.createFromOptions(context, options)
             android.util.Log.i("GemmaMediaPipeSummarizer", "LLM model loaded successfully from: ${modelFile.absolutePath}")
             true
