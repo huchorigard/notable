@@ -28,10 +28,11 @@ fun chunkStrokesForDigitalInk(
     strokes: List<Stroke>,
     chunkSize: Int = 1024
 ): List<Pair<Int, List<Stroke>>> {
-    if (strokes.isEmpty()) return emptyList()
+    val filteredStrokes = filterHandwritingStrokes(strokes)
+    if (filteredStrokes.isEmpty()) return emptyList()
 
     // Compute the bounding box of all strokes
-    val allPoints = strokes.flatMap { it.points }
+    val allPoints = filteredStrokes.flatMap { it.points }
     val minX = allPoints.minOf { it.x }
     val minY = allPoints.minOf { it.y }
     val maxX = allPoints.maxOf { it.x }
@@ -54,7 +55,7 @@ fun chunkStrokesForDigitalInk(
             val tileRect = RectF(left, top, right, bottom)
 
             // Select strokes that intersect this tile
-            val strokesInTile = strokes.filter { stroke ->
+            val strokesInTile = filteredStrokes.filter { stroke ->
                 stroke.points.any { p ->
                     p.x >= tileRect.left && p.x < tileRect.right &&
                     p.y >= tileRect.top && p.y < tileRect.bottom
@@ -164,6 +165,8 @@ suspend fun recognizeDigitalInkOnPage(
     strokes: List<Stroke>,
     logTag: String = "HandwritingRecognition"
 ): String {
+    val filteredStrokes = filterHandwritingStrokes(strokes)
+    if (filteredStrokes.isEmpty()) return ""
     val modelIdentifier = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en-US")
     if (modelIdentifier == null) {
         Log.e(logTag, "Could not get model identifier for en-US")
@@ -186,7 +189,7 @@ suspend fun recognizeDigitalInkOnPage(
         return "[Model download error]"
     }
     return try {
-        val ink = strokesToInk(strokes)
+        val ink = strokesToInk(filteredStrokes)
         val result = recognizer.recognize(ink).await()
         val text = result.candidates.firstOrNull()?.text ?: ""
         Log.i(logTag, "Recognized text: $text")
@@ -226,6 +229,7 @@ suspend fun recognizeChunkAndExtractMetadata(
     pageId: String,
     logTag: String = "HandwritingRecognition"
 ): RecognizedTextChunk {
+    val filteredStrokes = filterHandwritingStrokes(strokes)
     val modelIdentifier = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en-US")
     val model = DigitalInkRecognitionModel.builder(modelIdentifier!!).build()
     val recognizer = DigitalInkRecognition.getClient(
@@ -237,17 +241,17 @@ suspend fun recognizeChunkAndExtractMetadata(
     if (!isDownloaded) {
         remoteModelManager.download(model, com.google.mlkit.common.model.DownloadConditions.Builder().build()).await()
     }
-    val ink = strokesToInk(strokes)
+    val ink = strokesToInk(filteredStrokes)
     val result = recognizer.recognize(ink).await()
     val text = result.candidates.firstOrNull()?.text ?: ""
     // Extract bounding box
-    val allPoints = strokes.flatMap { it.points }
+    val allPoints = filteredStrokes.flatMap { it.points }
     val minX = allPoints.minOfOrNull { it.x } ?: 0f
     val minY = allPoints.minOfOrNull { it.y } ?: 0f
     val maxX = allPoints.maxOfOrNull { it.x } ?: 0f
     val maxY = allPoints.maxOfOrNull { it.y } ?: 0f
     val timestamp = allPoints.minOfOrNull { it.timestamp } ?: System.currentTimeMillis()
-    val strokeIds = strokes.map { it.id }
+    val strokeIds = filteredStrokes.map { it.id }
     return RecognizedTextChunk(
         pageId = pageId,
         recognizedText = text,
@@ -276,4 +280,8 @@ fun reconstructTextFromChunks(chunks: List<RecognizedTextChunk>, lineThreshold: 
     return lines.joinToString("\n") { lineChunks ->
         lineChunks.sortedBy { it.minX }.joinToString(" ") { it.recognizedText }
     }
+}
+
+fun filterHandwritingStrokes(strokes: List<Stroke>): List<Stroke> {
+    return strokes.filter { it.pen != Pen.MARKER }
 } 

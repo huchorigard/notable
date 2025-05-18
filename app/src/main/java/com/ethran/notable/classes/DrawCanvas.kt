@@ -64,6 +64,7 @@ import kotlin.concurrent.thread
 import kotlinx.coroutines.FlowPreview
 import com.ethran.notable.utils.recognizeChunkAndExtractMetadata
 import com.ethran.notable.db.AppDatabase
+import com.ethran.notable.utils.filterHandwritingStrokes
 
 
 val pressure = EpdController.getMaxTouchPressure()
@@ -167,9 +168,12 @@ class DrawCanvas(
                     recognitionJob = coroutineScope.launch {
                         kotlinx.coroutines.delay(800) // 800ms pause
                         if (realTimeStrokeBuffer.isNotEmpty()) {
-                            val chunk = recognizeChunkAndExtractMetadata(context, realTimeStrokeBuffer, page.id)
-                            val db = AppDatabase.getDatabase(context)
-                            db.recognizedTextDao().insertChunk(chunk)
+                            val filteredStrokes = filterHandwritingStrokes(realTimeStrokeBuffer)
+                            if (filteredStrokes.isNotEmpty()) {
+                                val chunk = recognizeChunkAndExtractMetadata(context, filteredStrokes, page.id)
+                                val db = AppDatabase.getDatabase(context)
+                                db.recognizedTextDao().insertChunk(chunk)
+                            }
                             realTimeStrokeBuffer.clear()
                         }
                     }
