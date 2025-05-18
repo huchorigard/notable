@@ -25,15 +25,16 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.livedata.observeAsState
 
 @Composable
 fun PagePreview(modifier: Modifier, pageId: String) {
     val context = LocalContext.current
-    var summary by remember(pageId) { mutableStateOf<String?>(null) }
+    val db = AppDatabase.getDatabase(context)
+    val summaryLive = remember(pageId) { db.pageSummaryDao().getSummaryLive(pageId) }
+    val summary = summaryLive.observeAsState().value?.summaryText
     var updatedAt by remember(pageId) { mutableStateOf<Long?>(null) }
     LaunchedEffect(pageId) {
-        val db = AppDatabase.getDatabase(context)
-        summary = db.pageSummaryDao().getSummary(pageId)?.summaryText
         val page = db.pageDao().getById(pageId)
         updatedAt = page?.updatedAt?.time
     }
@@ -60,14 +61,14 @@ fun PagePreview(modifier: Modifier, pageId: String) {
         }
         if (summary != null) {
             Text(
-                text = summary!!,
+                text = summary,
                 modifier = Modifier.padding(8.dp),
                 color = Color.Black,
                 maxLines = 8 // limit to a few lines for preview
             )
         } else {
             Text(
-                text = "No summary available",
+                text = "Summarizing...",
                 modifier = Modifier.padding(8.dp),
                 color = Color.Gray
             )

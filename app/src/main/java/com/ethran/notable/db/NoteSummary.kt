@@ -7,6 +7,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.lifecycle.LiveData
 
 @Entity
 data class PageSummary(
@@ -25,6 +26,9 @@ interface PageSummaryDao {
 
     @Query("SELECT * FROM PageSummary WHERE pageId = :pageId")
     fun getSummary(pageId: String): PageSummary?
+
+    @Query("SELECT * FROM PageSummary WHERE pageId = :pageId")
+    fun getSummaryLive(pageId: String): LiveData<PageSummary?>
 
     @Query("DELETE FROM PageSummary WHERE pageId = :pageId")
     fun deleteSummary(pageId: String)
