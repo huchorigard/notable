@@ -554,7 +554,15 @@ fun Toolbar(
                         Text("AI Assistant", fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(4.dp))
                         // --- Place for developer prompt customization ---
-                        val customPrompt = "You are a thoughtful and insightful assistant designed to help users reflect deeply on their thoughts and experiences.\n\nBelow is a note written by the user. Read the note carefully and generate 1 to 3 thought-provoking questions that encourage deeper reflection. These questions should help the user explore their emotions, motivations, assumptions, or possible next steps.\n\nAim for depth and clarity, not length. Your questions should feel natural, empathetic, and open-ended—like those of a skilled coach or therapist.\n\nUser's note:"
+                        val customPrompt = """You are a thoughtful and insightful assistant designed to help users reflect deeply on their thoughts and experiences.
+
+Below is a note written by the user. Read the note carefully. Your goal is to generate 1 thought-provoking question that encourages deeper reflection and helps the user make progress in their understanding.
+
+The question should be progressive, meaning it builds gently on what the user has already expressed, rather than being overly challenging or confronting. It should act as a supportive nudge, guiding them to explore their emotions, motivations, assumptions, or potential next steps in a constructive way.
+
+Aim for depth and clarity, not length. Your questions should feel natural, empathetic, and open-ended—like those of a skilled coach or therapist subtly guiding a conversation forward.
+
+User's note:"""
                         // ------------------------------------------------
                         Button(
                             onClick = {

@@ -193,7 +193,7 @@ dependencies {
     implementation "com.beust:klaxon:5.5"
 
     //noinspection GradleDynamicVersion
-    implementation 'io.shipbook:shipbooksdk:1.+'
+    implementation 'io.shipbook:shipbooksdk:1.8.3'
 
     // For xopp file format
     implementation("org.apache.commons:commons-compress:1.27.1") // GZip support
