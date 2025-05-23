@@ -135,8 +135,6 @@ fun Library(navController: NavController, folderId: String? = null) {
     }
 
     val books by appRepository.bookRepository.getAllInFolder(folderId).observeAsState()
-    val singlePages by appRepository.pageRepository.getSinglePagesInFolder(folderId)
-        .observeAsState()
     val folders by appRepository.folderRepository.getAllInFolder(folderId).observeAsState()
     val bookRepository = BookRepository(context)
 
@@ -158,7 +156,6 @@ fun Library(navController: NavController, folderId: String? = null) {
 
     var showUserInfo by remember { mutableStateOf(false) }
 
-    // State for context menu - now tracks which pageId has an active menu
     var contextMenuForPageId by remember { mutableStateOf<String?>(null) }
 
     Column(
@@ -177,21 +174,40 @@ fun Library(navController: NavController, folderId: String? = null) {
                 text = "Welcome back",
                 style = MaterialTheme.typography.h5.copy(fontWeight = FontWeight.Bold)
             )
-            Button(
-                onClick = {
-                    val page = Page(
-                        notebookId = null,
-                        background = GlobalAppSettings.current.defaultNativeTemplate,
-                        parentFolderId = folderId
-                    )
-                    appRepository.pageRepository.create(page)
-                    navController.navigate("pages/${page.id}")
-                },
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(backgroundColor = Color.LightGray),
-                modifier = Modifier.height(48.dp)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("New Note", fontSize = 16.sp)
+                Button(
+                    onClick = {
+                        val page = Page(
+                            notebookId = null,
+                            background = GlobalAppSettings.current.defaultNativeTemplate,
+                            parentFolderId = folderId
+                        )
+                        appRepository.pageRepository.create(page)
+                        navController.navigate("pages/${page.id}")
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(backgroundColor = Color.LightGray),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text("New Note", fontSize = 16.sp)
+                }
+                
+                IconButton(
+                    onClick = { isSettingsOpen = true },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .border(1.dp, Color.LightGray, RoundedCornerShape(8.dp))
+                ) {
+                    Icon(
+                        FeatherIcons.Settings,
+                        contentDescription = "Settings",
+                        tint = Color.Gray,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
 
@@ -201,7 +217,7 @@ fun Library(navController: NavController, folderId: String? = null) {
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        Box { // Box remains to ensure Popups from NoteCards can overlay other UI if necessary, though anchoring is now internal to NoteCard
+        Box {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -256,7 +272,7 @@ fun Library(navController: NavController, folderId: String? = null) {
                             FeatherIcons.ChevronUp,
                             contentDescription = "Scroll Up",
                             modifier = Modifier.size(36.dp),
-                            tint = if (currentPage > 0) Color.Black else Color.Gray // Visual cue for disabled
+                            tint = if (currentPage > 0) Color.Black else Color.Gray
                         )
                     }
                     Spacer(Modifier.height(8.dp))
@@ -268,79 +284,11 @@ fun Library(navController: NavController, folderId: String? = null) {
                             FeatherIcons.ChevronDown,
                             contentDescription = "Scroll Down",
                             modifier = Modifier.size(36.dp),
-                            tint = if (currentPage < totalPages - 1) Color.Black else Color.Gray // Visual cue for disabled
+                            tint = if (currentPage < totalPages - 1) Color.Black else Color.Gray
                         )
                     }
                 }
             }
-        }
-
-        Column(
-            Modifier.padding(10.dp)
-        ) {
-            Spacer(Modifier.height(10.dp))
-
-            Text(text = "Quick pages")
-            Spacer(Modifier.height(10.dp))
-
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                item {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .width(130.dp)
-                            .aspectRatio(3f / 4f)
-                            .border(1.dp, Color.Gray, RectangleShape)
-                            .noRippleClickable {
-                                val page = Page(
-                                    notebookId = null,
-                                    background = GlobalAppSettings.current.defaultNativeTemplate,
-                                    parentFolderId = folderId
-                                )
-                                appRepository.pageRepository.create(page)
-                                navController.navigate("pages/${page.id}")
-                            }
-                    ) {
-                        Icon(
-                            imageVector = FeatherIcons.FilePlus,
-                            contentDescription = "Add Quick Page",
-                            tint = Color.Gray,
-                            modifier = Modifier.size(40.dp),
-                        )
-                    }
-                }
-                if (singlePages?.isNotEmpty() == true) {
-                    items(singlePages!!.reversed()) { page ->
-                        val pageId = page.id
-                        var isPageSelected by remember { mutableStateOf(false) }
-                        Box {
-                            PagePreview(
-                                modifier = Modifier
-                                    .combinedClickable(
-                                        onClick = {
-                                            navController.navigate("pages/$pageId")
-                                        },
-                                        onLongClick = {
-                                            isPageSelected = true
-                                        },
-                                    )
-                                    .width(130.dp)
-                                    .aspectRatio(3f / 4f)
-                                    .border(1.dp, Color.Black, RectangleShape),
-                                pageId = pageId
-                            )
-                            if (isPageSelected) PageMenu(
-                                pageId = pageId,
-                                canDelete = true,
-                                onClose = { isPageSelected = false })
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(10.dp))
         }
     }
 
