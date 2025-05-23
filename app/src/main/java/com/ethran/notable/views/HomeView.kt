@@ -108,11 +108,27 @@ fun Library(navController: NavController, folderId: String? = null) {
         mutableStateOf(false)
     }
     val appRepository = AppRepository(context)
+    val db = remember { AppDatabase.getDatabase(context) }
+
+    // State for selected tag
+    var selectedTagId by remember { mutableStateOf<String?>(null) }
+
+    // Get all available tags
+    val allTags by remember { mutableStateOf(db.tagDao().getAllTags()) }
 
     val singlePagesState by appRepository.pageRepository.getSinglePagesInFolder(folderId).observeAsState()
 
-    val allNotesData: List<Page> = remember(singlePagesState) {
-        (singlePagesState ?: emptyList()).reversed() // Show most recent first (already Page objects)
+    // Filter notes based on selected tag
+    val allNotesData: List<Page> = remember(singlePagesState, selectedTagId) {
+        val allPages = (singlePagesState ?: emptyList()).reversed()
+        if (selectedTagId == null) {
+            allPages
+        } else {
+            allPages.filter { page ->
+                val pageTags = db.tagDao().getTagsForPage(page.id)
+                pageTags.any { it.id == selectedTagId }
+            }
+        }
     }
 
     val itemsPerPage = 6
@@ -216,6 +232,47 @@ fun Library(navController: NavController, folderId: String? = null) {
             style = MaterialTheme.typography.subtitle1,
             modifier = Modifier.padding(bottom = 16.dp)
         )
+
+        // Tag list row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+            ) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(allTags) { tag ->
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(
+                                    if (selectedTagId == tag.id) Color.LightGray
+                                    else Color.Transparent
+                                )
+                                .border(1.dp, Color.Gray, RoundedCornerShape(4.dp))
+                                .clickable {
+                                    selectedTagId = if (selectedTagId == tag.id) null else tag.id
+                                    currentPage = 0 // Reset to first page when changing tag
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = tag.name,
+                                fontSize = 14.sp,
+                                color = Color.Black
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         Box {
             Row(
