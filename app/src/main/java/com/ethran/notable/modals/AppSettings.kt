@@ -5,54 +5,34 @@ import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.Button
-import androidx.compose.material.Icon
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.Switch
-import androidx.compose.material.TabRowDefaults.Divider
-import androidx.compose.material.Text
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.core.net.toUri
 import com.ethran.notable.BuildConfig
-import com.ethran.notable.classes.showHint
 import com.ethran.notable.components.SelectMenu
+import com.ethran.notable.db.AppDatabase
 import com.ethran.notable.db.KvProxy
-import com.ethran.notable.utils.isLatestVersion
+import com.ethran.notable.db.Tag
 import com.ethran.notable.utils.isNext
 import com.ethran.notable.utils.noRippleClickable
 import kotlinx.serialization.Serializable
-import kotlin.concurrent.thread
-
+import java.util.UUID
 
 // Define the target page size (A4 in points: 595 x 842)
 const val A4_WIDTH = 595
@@ -79,6 +59,7 @@ data class AppSettings(
     val debugMode: Boolean = false,
     val neoTools: Boolean = false,
     val toolbarPosition: Position = Position.Top,
+    val tags: List<String> = listOf("Work", "Personal", "Ideas", "To-Do", "Important", "Learning", "Meeting"),
 
     val doubleTapAction: GestureAction? = defaultDoubleTapAction,
     val twoFingerTapAction: GestureAction? = defaultTwoFingerTapAction,
@@ -88,7 +69,7 @@ data class AppSettings(
     val twoFingerSwipeRightAction: GestureAction? = defaultTwoFingerSwipeRightAction,
     val holdAction: GestureAction? = defaultHoldAction,
 
-    ) {
+) {
     companion object {
         val defaultDoubleTapAction get() = GestureAction.Undo
         val defaultTwoFingerTapAction get() = GestureAction.ChangeTool
@@ -113,8 +94,11 @@ data class AppSettings(
 fun AppSettingsModal(onClose: () -> Unit, onUserInfo: () -> Unit = {}) {
     val context = LocalContext.current
     val kv = KvProxy(context)
-
     val settings = GlobalAppSettings.current ?: return
+    
+    // State for tag input
+    var tagInput by remember { mutableStateOf(settings.tags.joinToString(", ")) }
+    var isEditingTags by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = { onClose() },
@@ -148,8 +132,83 @@ fun AppSettingsModal(onClose: () -> Unit, onUserInfo: () -> Unit = {}) {
             Column(Modifier.padding(20.dp, 10.dp)) {
                 GeneralSettings(kv, settings)
                 EditGestures(kv, settings)
-                GitHubSponsorButton()
-                ShowUpdateButton(context)
+                
+                // Tags section
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(text = "Tags")
+                        if (isEditingTags) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                BasicTextField(
+                                    value = tagInput,
+                                    onValueChange = { tagInput = it },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(Color(230, 230, 230, 255))
+                                        .padding(8.dp),
+                                    textStyle = TextStyle(
+                                        fontSize = 14.sp
+                                    )
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        // Process and save tags
+                                        val newTags = tagInput
+                                            .split(",")
+                                            .map { it.trim() }
+                                            .filter { it.isNotEmpty() }
+                                            .distinct()
+                                        
+                                        // Update settings
+                                        kv.setAppSettings(settings.copy(tags = newTags))
+                                        
+                                        // Update database
+                                        val db = AppDatabase.getDatabase(context)
+                                        val tagDao = db.tagDao()
+                                        
+                                        // Remove tags that are no longer in the list
+                                        val existingTags = tagDao.getAllTags()
+                                        existingTags.forEach { tag ->
+                                            if (!newTags.contains(tag.name)) {
+                                                tagDao.deleteTag(tag)
+                                            }
+                                        }
+                                        
+                                        // Add new tags
+                                        newTags.forEach { tagName ->
+                                            if (existingTags.none { it.name == tagName }) {
+                                                tagDao.insertTag(Tag(id = UUID.randomUUID().toString(), name = tagName))
+                                            }
+                                        }
+                                        
+                                        isEditingTags = false
+                                    }
+                                ) {
+                                    Text("Save")
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = settings.tags.joinToString(", "),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { isEditingTags = true }
+                                    .background(Color(230, 230, 230, 255))
+                                    .padding(8.dp),
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+                
                 Spacer(Modifier.height(20.dp))
                 Button(onClick = { onUserInfo() }) {
                     Text("User Information")
@@ -257,111 +316,6 @@ fun GestureSelectorRow(
                 }
             },
         )
-    }
-}
-
-
-@Composable
-fun GitHubSponsorButton() {
-    val context = LocalContext.current
-
-    Column(
-        modifier = Modifier
-            .padding(horizontal = 120.dp, vertical = 16.dp)
-            .fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
-                .background(
-                    color = Color(0xFF24292E),
-                    shape = RoundedCornerShape(25.dp)
-                )
-                .clickable {
-                    val urlIntent = Intent(
-                        Intent.ACTION_VIEW,
-                        "https://github.com/sponsors/ethran".toUri()
-                    )
-                    context.startActivity(urlIntent)
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(
-                    imageVector = Icons.Default.FavoriteBorder,
-                    contentDescription = "Heart Icon",
-                    tint = Color(0xFFEA4AAA),
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Sponsor",
-                    color = Color.White,
-                    style = MaterialTheme.typography.button.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    ),
-                )
-            }
-        }
-    }
-}
-
-
-@Composable
-fun ShowUpdateButton(context: Context) {
-    var isLatestVersion by remember { mutableStateOf(true) }
-    LaunchedEffect(key1 = Unit, block = { thread { isLatestVersion = isLatestVersion(context) } })
-
-    if (!isLatestVersion) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = "It seems a new version of Notable is available on GitHub.",
-                fontStyle = FontStyle.Italic,
-                style = MaterialTheme.typography.h6,
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            Button(
-                onClick = {
-                    val urlIntent = Intent(
-                        Intent.ACTION_VIEW,
-                        "https://github.com/ethran/notable/releases".toUri()
-                    )
-                    context.startActivity(urlIntent)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "See release in browser",
-                )
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-    } else {
-        Button(
-            onClick = {
-                thread {
-                    isLatestVersion = isLatestVersion(context, true)
-                    if (isLatestVersion) {
-                        showHint(
-                            "You are on the latest version.",
-                            duration = 1000
-                        )
-                    }
-                }
-            },
-            modifier = Modifier.fillMaxWidth() // Adjust the modifier as needed
-        ) {
-            Text(text = "Check for newer version")
-        }
     }
 }
 
