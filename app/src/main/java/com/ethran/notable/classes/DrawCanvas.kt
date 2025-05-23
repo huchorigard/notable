@@ -65,6 +65,9 @@ import kotlinx.coroutines.FlowPreview
 import com.ethran.notable.utils.recognizeChunkAndExtractMetadata
 import com.ethran.notable.db.AppDatabase
 import com.ethran.notable.utils.filterHandwritingStrokes
+import com.ethran.notable.utils.StrokeManager
+import android.view.MotionEvent
+import java.util.UUID
 
 
 val pressure = EpdController.getMaxTouchPressure()
@@ -81,7 +84,8 @@ class DrawCanvas(
     val history: History
 ) : SurfaceView(context) {
     private val strokeHistoryBatch = mutableListOf<String>()
-//    private val commitHistorySignal = MutableSharedFlow<Unit>()
+    private val strokeManager = StrokeManager(context, coroutineScope, page.id)
+    private var currentStrokeId: String? = null
 
     // Add these properties to DrawCanvas
     private val realTimeStrokeBuffer = mutableListOf<com.ethran.notable.db.Stroke>()
@@ -116,14 +120,51 @@ class DrawCanvas(
     }
 
     private val inputCallback: RawInputCallback = object : RawInputCallback() {
-
         override fun onBeginRawDrawing(p0: Boolean, p1: TouchPoint?) {
+            if (p1 != null) {
+                currentStrokeId = UUID.randomUUID().toString()
+                val event = MotionEvent.obtain(
+                    System.currentTimeMillis(),
+                    System.currentTimeMillis(),
+                    MotionEvent.ACTION_DOWN,
+                    p1.x,
+                    p1.y,
+                    0
+                )
+                strokeManager.addNewTouchEvent(event, currentStrokeId)
+                event.recycle()
+            }
         }
 
         override fun onEndRawDrawing(p0: Boolean, p1: TouchPoint?) {
+            if (p1 != null) {
+                val event = MotionEvent.obtain(
+                    System.currentTimeMillis(),
+                    System.currentTimeMillis(),
+                    MotionEvent.ACTION_UP,
+                    p1.x,
+                    p1.y,
+                    0
+                )
+                strokeManager.addNewTouchEvent(event, currentStrokeId)
+                event.recycle()
+                currentStrokeId = null
+            }
         }
 
         override fun onRawDrawingTouchPointMoveReceived(p0: TouchPoint?) {
+            if (p0 != null) {
+                val event = MotionEvent.obtain(
+                    System.currentTimeMillis(),
+                    System.currentTimeMillis(),
+                    MotionEvent.ACTION_MOVE,
+                    p0.x,
+                    p0.y,
+                    0
+                )
+                strokeManager.addNewTouchEvent(event, currentStrokeId)
+                event.recycle()
+            }
         }
 
         override fun onRawDrawingTouchPointListReceived(plist: TouchPointList) {

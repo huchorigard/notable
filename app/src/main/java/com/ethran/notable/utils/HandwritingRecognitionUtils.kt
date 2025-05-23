@@ -18,6 +18,7 @@ import com.google.mlkit.vision.digitalink.DigitalInkRecognizerOptions
 import com.google.mlkit.vision.digitalink.DigitalInkRecognition
 import com.google.mlkit.vision.digitalink.Ink
 import com.ethran.notable.db.RecognizedTextChunk
+import com.ethran.notable.db.AppDatabase
 
 /**
  * Splits the bounding box of all strokes into 1024x1024 px tiles,
@@ -190,7 +191,33 @@ suspend fun recognizeDigitalInkOnPage(
     }
     return try {
         val ink = strokesToInk(filteredStrokes)
-        val result = recognizer.recognize(ink).await()
+        
+        // Calculate writing area from strokes
+        val allPoints = filteredStrokes.flatMap { it.points }
+        val minX = allPoints.minOf { it.x }
+        val minY = allPoints.minOf { it.y }
+        val maxX = allPoints.maxOf { it.x }
+        val maxY = allPoints.maxOf { it.y }
+        val width = maxX - minX
+        val height = maxY - minY
+        
+        // Get pre-context from previously recognized text
+        val db = AppDatabase.getDatabase(context)
+        val previousChunks = db.recognizedTextDao().getChunksForPage(strokes.firstOrNull()?.pageId ?: "")
+        val preContext = if (previousChunks.isNotEmpty()) {
+            // Get the last 20 characters of previously recognized text
+            reconstructTextFromChunks(previousChunks).takeLast(20)
+        } else {
+            ""
+        }
+        
+        // Create recognition context with writing area and pre-context
+        val recognitionContext = com.google.mlkit.vision.digitalink.RecognitionContext.builder()
+            .setWritingArea(com.google.mlkit.vision.digitalink.WritingArea(width, height))
+            .setPreContext(preContext)
+            .build()
+            
+        val result = recognizer.recognize(ink, recognitionContext).await()
         val text = result.candidates.firstOrNull()?.text ?: ""
         Log.i(logTag, "Recognized text: $text")
         text
@@ -242,14 +269,34 @@ suspend fun recognizeChunkAndExtractMetadata(
         remoteModelManager.download(model, com.google.mlkit.common.model.DownloadConditions.Builder().build()).await()
     }
     val ink = strokesToInk(filteredStrokes)
-    val result = recognizer.recognize(ink).await()
-    val text = result.candidates.firstOrNull()?.text ?: ""
-    // Extract bounding box
+    
+    // Calculate writing area from strokes
     val allPoints = filteredStrokes.flatMap { it.points }
     val minX = allPoints.minOfOrNull { it.x } ?: 0f
     val minY = allPoints.minOfOrNull { it.y } ?: 0f
     val maxX = allPoints.maxOfOrNull { it.x } ?: 0f
     val maxY = allPoints.maxOfOrNull { it.y } ?: 0f
+    val width = maxX - minX
+    val height = maxY - minY
+    
+    // Get pre-context from previously recognized text
+    val db = AppDatabase.getDatabase(context)
+    val previousChunks = db.recognizedTextDao().getChunksForPage(pageId)
+    val preContext = if (previousChunks.isNotEmpty()) {
+        // Get the last 20 characters of previously recognized text
+        reconstructTextFromChunks(previousChunks).takeLast(20)
+    } else {
+        ""
+    }
+    
+    // Create recognition context with writing area and pre-context
+    val recognitionContext = com.google.mlkit.vision.digitalink.RecognitionContext.builder()
+        .setWritingArea(com.google.mlkit.vision.digitalink.WritingArea(width, height))
+        .setPreContext(preContext)
+        .build()
+        
+    val result = recognizer.recognize(ink, recognitionContext).await()
+    val text = result.candidates.firstOrNull()?.text ?: ""
     val timestamp = allPoints.minOfOrNull { it.timestamp } ?: System.currentTimeMillis()
     val strokeIds = filteredStrokes.map { it.id }
     return RecognizedTextChunk(
