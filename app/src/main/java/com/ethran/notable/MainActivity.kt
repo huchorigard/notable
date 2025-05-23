@@ -115,11 +115,11 @@ class MainActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
 
                 // Check for model presence at app start
-                LaunchedEffect(Unit) {
+                /* LaunchedEffect(Unit) {
                     if (!GemmaModelManager.isModelDownloaded(this@MainActivity)) {
                         showDownloadDialog = true
                     }
-                }
+                } */
 
                 if (showDownloadDialog) {
                     AlertDialog(
