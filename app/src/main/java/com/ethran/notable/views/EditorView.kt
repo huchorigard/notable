@@ -71,6 +71,8 @@ import com.ethran.notable.db.PageSummary
 import com.ethran.notable.db.PageSummaryDao
 import java.util.Date
 import kotlinx.coroutines.runBlocking
+import com.ethran.notable.utils.GemmaModelManager
+import com.ethran.notable.utils.GemmaMediaPipeSummarizer
 import androidx.compose.runtime.rememberUpdatedState
 import android.content.Context
 import kotlinx.coroutines.GlobalScope
@@ -148,15 +150,21 @@ fun EditorView(
         var shouldSummarize by remember { mutableStateOf(false) }
         DisposableEffect(Unit) {
             onDispose {
-                Log.i(TAG, "EditorView: onDispose called, triggering summary for page $_pageId")
+                Log.i(TAG, "EditorView: onDispose called, triggering summary and tagging for page $_pageId")
                 val currentContext = context
                 val currentPageId = _pageId
                 GlobalScope.launch {
                     try {
-                        Log.i(TAG, "EditorView: Starting summary for page $currentPageId (onDispose)")
+                        Log.i(TAG, "EditorView: Starting summary and tagging for page $currentPageId (onDispose)")
                         val db = AppDatabase.getDatabase(currentContext)
                         val recognizedTextChunks = db.recognizedTextDao().getChunksForPage(currentPageId)
                         val recognizedText = reconstructTextFromChunks(recognizedTextChunks)
+                        
+                        // Get user info
+                        val kv = KvProxy(currentContext)
+                        val userInfo = kv.get(USER_INFO_KEY, String.serializer()) ?: ""
+                        
+                        // Process summary
                         val summary = summarizeWithLLM(currentContext, currentPageId, recognizedText)
                         val pageSummary = PageSummary(
                             pageId = currentPageId,
@@ -165,8 +173,24 @@ fun EditorView(
                         )
                         db.pageSummaryDao().insert(pageSummary)
                         Log.i(TAG, "EditorView: Summary for page $currentPageId saved to database (onDispose). Summary: $summary")
+
+                        // Process tags
+                        val openAiApiKey = "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"
+                        val availableTags = db.tagDao().getAllTags()
+                        val suggestedTags = OpenAISummarizer.suggestTags(
+                            apiKey = openAiApiKey,
+                            recognizedText = recognizedText,
+                            userInfo = userInfo,
+                            availableTags = availableTags
+                        )
+                        
+                        // Save the suggested tags
+                        if (suggestedTags.isNotEmpty()) {
+                            db.tagDao().setTagsForPage(currentPageId, suggestedTags)
+                            Log.i(TAG, "EditorView: Tags for page $currentPageId saved to database (onDispose). Tags: ${suggestedTags.map { it.name }}")
+                        }
                     } catch (e: Exception) {
-                        Log.e(TAG, "EditorView: Summary failed for page $currentPageId (onDispose): ${e.message}", e)
+                        Log.e(TAG, "EditorView: Summary/Tagging failed for page $currentPageId (onDispose): ${e.message}", e)
                     }
                 }
             }

@@ -38,9 +38,90 @@ class Converters {
 )
 class AutoMigration30to31 : AutoMigrationSpec
 
+@Entity(tableName = "tags")
+data class Tag(
+    @PrimaryKey val id: String,
+    val name: String
+)
+
+@Entity(
+    tableName = "page_tag_cross_ref",
+    primaryKeys = ["pageId", "tagId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = Page::class,
+            parentColumns = ["id"],
+            childColumns = ["pageId"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = Tag::class,
+            parentColumns = ["id"],
+            childColumns = ["tagId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index("pageId"),
+        Index("tagId")
+    ]
+)
+data class PageTagCrossRef(
+    val pageId: String,
+    val tagId: String
+)
+
+@Dao
+interface TagDao {
+    @Query("SELECT * FROM tags")
+    fun getAllTags(): List<Tag>
+
+    @Query("SELECT * FROM tags WHERE id = :tagId")
+    fun getTagById(tagId: String): Tag?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertTag(tag: Tag)
+
+    @Delete
+    fun deleteTag(tag: Tag)
+
+    @Query("SELECT t.* FROM tags t INNER JOIN page_tag_cross_ref pt ON t.id = pt.tagId WHERE pt.pageId = :pageId")
+    fun getTagsForPage(pageId: String): List<Tag>
+
+    @Transaction
+    fun setTagsForPage(pageId: String, tags: List<Tag>) {
+        // Remove existing tags for the page
+        deleteTagsForPage(pageId)
+        
+        // Insert new tags and cross references
+        tags.forEach { tag ->
+            insertTag(tag)
+            insertPageTagCrossRef(PageTagCrossRef(pageId = pageId, tagId = tag.id))
+        }
+    }
+
+    @Query("DELETE FROM page_tag_cross_ref WHERE pageId = :pageId")
+    fun deleteTagsForPage(pageId: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertPageTagCrossRef(crossRef: PageTagCrossRef)
+}
+
 @Database(
-    entities = [Folder::class, Notebook::class, Page::class, Stroke::class, Image::class, Kv::class, RecognizedText::class, RecognizedTextChunk::class, PageSummary::class],
-    version = 35,
+    entities = [
+        Folder::class, 
+        Notebook::class, 
+        Page::class, 
+        Stroke::class, 
+        Image::class, 
+        Kv::class, 
+        RecognizedText::class, 
+        RecognizedTextChunk::class, 
+        PageSummary::class,
+        Tag::class,
+        PageTagCrossRef::class
+    ],
+    version = 36,
     autoMigrations = [
         AutoMigration(19, 20),
         AutoMigration(20, 21),
@@ -66,9 +147,37 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun ImageDao(): ImageDao
     abstract fun recognizedTextDao(): RecognizedTextDao
     abstract fun pageSummaryDao(): PageSummaryDao
+    abstract fun tagDao(): TagDao
 
     companion object {
         private var INSTANCE: AppDatabase? = null
+
+        private val MIGRATION_35_36 = object : Migration(35, 36) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Create tags table
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS tags (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL
+                    )
+                """)
+
+                // Create page_tag_cross_ref table
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS page_tag_cross_ref (
+                        pageId TEXT NOT NULL,
+                        tagId TEXT NOT NULL,
+                        PRIMARY KEY(pageId, tagId),
+                        FOREIGN KEY(pageId) REFERENCES Page(id) ON DELETE CASCADE,
+                        FOREIGN KEY(tagId) REFERENCES tags(id) ON DELETE CASCADE
+                    )
+                """)
+
+                // Create indices for better query performance
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_page_tag_cross_ref_pageId ON page_tag_cross_ref(pageId)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_page_tag_cross_ref_tagId ON page_tag_cross_ref(tagId)")
+            }
+        }
 
         fun getDatabase(context: Context): AppDatabase {
             if (INSTANCE == null) {
@@ -97,7 +206,14 @@ abstract class AppDatabase : RoomDatabase() {
                     INSTANCE =
                         Room.databaseBuilder(context, AppDatabase::class.java, dbFile.absolutePath)
                             .allowMainThreadQueries() // Avoid in production
-                            .addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_22_23, MIGRATION_31_32, MIGRATION_32_33)
+                            .addMigrations(
+                                MIGRATION_16_17, 
+                                MIGRATION_17_18, 
+                                MIGRATION_22_23, 
+                                MIGRATION_31_32, 
+                                MIGRATION_32_33,
+                                MIGRATION_35_36
+                            )
                             .build()
 
                 }
