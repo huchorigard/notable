@@ -349,36 +349,32 @@ suspend fun updateRecognizedChunkAfterErasure(
     chunkToUpdateId: String,
     remainingStrokeIdsInChunk: List<String>
 ) {
-    Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: Called for chunk $chunkToUpdateId. Page: $pageId. Remaining stroke IDs: (${remainingStrokeIdsInChunk.size}) $remainingStrokeIdsInChunk")
+    // Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: Called for chunk $chunkToUpdateId. Page: $pageId. Remaining stroke IDs: (${remainingStrokeIdsInChunk.size}) $remainingStrokeIdsInChunk")
     if (remainingStrokeIdsInChunk.isEmpty()) {
         recognizedTextDao.deleteChunkById(chunkToUpdateId)
-        Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId deleted as no strokes remain.")
+        Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId deleted as no strokes remain.") // Keep: Important action
         return
     }
 
     // 1. Fetch the full Stroke objects for the remaining IDs
     val remainingStrokes = strokeDao.getStrokesByIds(remainingStrokeIdsInChunk)
-    Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: Requested ${remainingStrokeIdsInChunk.size} IDs from DB. Fetched ${remainingStrokes.size} full stroke objects for chunk $chunkToUpdateId.")
+    // Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: Requested ${remainingStrokeIdsInChunk.size} IDs from DB. Fetched ${remainingStrokes.size} full stroke objects for chunk $chunkToUpdateId.")
     val fetchedStrokeIds = remainingStrokes.map { it.id }
-    // Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: Requested Stroke IDs: $remainingStrokeIdsInChunk")
-    // Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: Actually Fetched Stroke IDs: $fetchedStrokeIds")
     val missingStrokeIds = remainingStrokeIdsInChunk.filterNot { it in fetchedStrokeIds }
     if (missingStrokeIds.isNotEmpty()) {
-        Log.w("InkTextSync", "updateRecognizedChunkAfterErasure: Missing ${missingStrokeIds.size} stroke IDs from DB for chunk $chunkToUpdateId: $missingStrokeIds")
+        Log.w("InkTextSync", "updateRecognizedChunkAfterErasure: Missing ${missingStrokeIds.size} stroke IDs from DB for chunk $chunkToUpdateId: $missingStrokeIds. This can happen if original strokes were filtered by pressure.") // Keep: Useful warning with explanation
     }
 
     if (remainingStrokes.isEmpty()) {
-        // Fallback if somehow remainingStrokeIdsInChunk was not empty but no strokes were found (data integrity issue?)
         recognizedTextDao.deleteChunkById(chunkToUpdateId)
-        Log.w("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId deleted as no actual strokes were found for the given remaining IDs.")
+        Log.w("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId deleted as no actual strokes were found for the given remaining IDs.") // Keep: Important warning
         return
     }
 
     val filteredRemainingStrokes = filterHandwritingStrokes(remainingStrokes)
     if (filteredRemainingStrokes.isEmpty()) {
-        // If all remaining strokes were e.g. markers
         recognizedTextDao.deleteChunkById(chunkToUpdateId)
-        Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId deleted as all remaining strokes were filtered out (e.g. markers).")
+        Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId deleted as all remaining strokes were filtered out (e.g. markers).") // Keep: Important action
         return
     }
 
@@ -396,18 +392,15 @@ suspend fun updateRecognizedChunkAfterErasure(
     // Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: Built new Ink object with ${newInk.strokes.size} strokes for chunk $chunkToUpdateId.")
 
     if (newInk.strokes.isEmpty()) {
-        // This case should ideally be caught by remainingStrokes.isEmpty() or filteredRemainingStrokes.isEmpty() earlier, but as a safeguard:
         recognizedTextDao.deleteChunkById(chunkToUpdateId)
-        Log.w("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId deleted as the new Ink object had no strokes after processing remainingStrokeIds.")
+        Log.w("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId deleted as the new Ink object had no strokes after processing remainingStrokeIds.") // Keep: Important warning
         return
     }
 
     // Setup ML Kit Model
     val modelIdentifier = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en-US")
     if (modelIdentifier == null) {
-        Log.e("InkTextSync", "updateRecognizedChunkAfterErasure: Failed to get model identifier for re-recognition of chunk $chunkToUpdateId. Language tag: en-US")
-        // Optionally update chunk with error text or delete
-        // recognizedTextDao.deleteChunkById(chunkToUpdateId) // Or mark as error
+        Log.e("InkTextSync", "updateRecognizedChunkAfterErasure: Failed to get model identifier for re-recognition of chunk $chunkToUpdateId. Language tag: en-US") // Keep: Important error
         return
     }
     val model = DigitalInkRecognitionModel.builder(modelIdentifier).build()
@@ -417,14 +410,12 @@ suspend fun updateRecognizedChunkAfterErasure(
         val remoteModelManager = com.google.mlkit.common.model.RemoteModelManager.getInstance()
         val isDownloaded = Tasks.await(remoteModelManager.isModelDownloaded(model))
         if (!isDownloaded) {
-            Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Model for en-US not downloaded for chunk $chunkToUpdateId. Attempting download.")
+            Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Model for en-US not downloaded for chunk $chunkToUpdateId. Attempting download.") // Keep: Important one-time event
             Tasks.await(remoteModelManager.download(model, com.google.mlkit.common.model.DownloadConditions.Builder().build()))
-            Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Model downloaded for en-US for chunk $chunkToUpdateId.")
+            Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Model downloaded for en-US for chunk $chunkToUpdateId.") // Keep: Important one-time event
         }
     } catch (e: Exception) {
-        Log.e("InkTextSync", "updateRecognizedChunkAfterErasure: Failed to download/check model for chunk $chunkToUpdateId", e)
-        // Optionally update chunk with error text or delete
-        // recognizedTextDao.deleteChunkById(chunkToUpdateId) // Or mark as error
+        Log.e("InkTextSync", "updateRecognizedChunkAfterErasure: Failed to download/check model for chunk $chunkToUpdateId", e) // Keep: Important error
         return
     }
 
@@ -459,7 +450,7 @@ suspend fun updateRecognizedChunkAfterErasure(
 
             if (precedingChunksOnSameLine.isNotEmpty()) {
                 preContext = precedingChunksOnSameLine.first().recognizedText.takeLast(20)
-                Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: PreContext from same line for chunk $chunkToUpdateId: '$preContext'")
+                // Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: PreContext from same line for chunk $chunkToUpdateId: '$preContext'")
             } else {
                 // 2. If no preceding on same line, try lines above
                 val chunksAbove = allChunksOnPage.filter {
@@ -469,20 +460,20 @@ suspend fun updateRecognizedChunkAfterErasure(
                 if (chunksAbove.isNotEmpty()) {
                     // reconstructTextFromChunks sorts by averageY then minX, effectively creating reading order
                     preContext = reconstructTextFromChunks(chunksAbove).takeLast(20)
-                    Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: PreContext from lines above for chunk $chunkToUpdateId: '$preContext'")
+                    // Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: PreContext from lines above for chunk $chunkToUpdateId: '$preContext'")
                 }
                 // If still empty, preContext remains "" (first content on page)
             }
         } else {
-            Log.w("InkTextSync", "updateRecognizedChunkAfterErasure: Could not find original chunk $chunkToUpdateId. Using page-wide fallback for pre-context.")
+            // Log.w("InkTextSync", "updateRecognizedChunkAfterErasure: Could not find original chunk $chunkToUpdateId. Using page-wide fallback for pre-context.") // Potentially useful warning
             // 3. Fallback if original chunk isn't found (should be rare)
             val allOtherChunksOnPageForFallback = db.recognizedTextDao().getChunksForPage(pageId).filterNot { it.id == chunkToUpdateId }
             if (allOtherChunksOnPageForFallback.isNotEmpty()) {
                 preContext = reconstructTextFromChunks(allOtherChunksOnPageForFallback).takeLast(20)
-                Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: PreContext from page-wide fallback for chunk $chunkToUpdateId: '$preContext'")
+                // Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: PreContext from page-wide fallback for chunk $chunkToUpdateId: '$preContext'")
             }
         }
-        Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Final PreContext for chunk $chunkToUpdateId: '$preContext'")
+        Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Final PreContext for chunk $chunkToUpdateId: '$preContext'") // Keep: Informative for debugging context issues
 
         val recognitionContext = com.google.mlkit.vision.digitalink.RecognitionContext.builder()
             .setWritingArea(com.google.mlkit.vision.digitalink.WritingArea(widthForContext, heightForContext))
@@ -491,7 +482,7 @@ suspend fun updateRecognizedChunkAfterErasure(
 
         val result = Tasks.await(recognizer.recognize(newInk, recognitionContext)) // Pass context
         val newRecognizedText = result.candidates.firstOrNull()?.text ?: ""
-        Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: ML Kit re-recognized for chunk $chunkToUpdateId. New text: '$newRecognizedText'")
+        // Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: ML Kit re-recognized for chunk $chunkToUpdateId. New text: '$newRecognizedText'")
 
         // 3. Calculate new bounding box and averageY for the updated chunk using filtered strokes
         val allPointsForUpdate = filteredRemainingStrokes.flatMap { it.points } // Use filtered strokes for bounds
@@ -514,12 +505,10 @@ suspend fun updateRecognizedChunkAfterErasure(
             timestamp = System.currentTimeMillis(), // Update timestamp
             strokeIds = filteredRemainingStrokes.map { it.id } // Use IDs of filtered remaining strokes
         )
-        recognizedTextDao.insertChunk(updatedChunk) // Assuming insertChunk handles updates on conflict (e.g., @Insert(onConflict = OnConflictStrategy.REPLACE))
-        Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId updated in DB. New text: '$newRecognizedText', new avgY: $newAverageY")
+        recognizedTextDao.insertChunk(updatedChunk)
+        Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId updated in DB. New text: '$newRecognizedText', new avgY: $newAverageY") // Keep: Important success log
 
     } catch (e: Exception) {
-        Log.e("InkTextSync", "updateRecognizedChunkAfterErasure: Error during ML Kit recognition or DB update for chunk $chunkToUpdateId: ", e)
-        // Decide on error handling: re-throw, delete chunk, or leave as is?
-        // For now, let's leave it, but this might lead to stale data.
+        Log.e("InkTextSync", "updateRecognizedChunkAfterErasure: Error during ML Kit recognition or DB update for chunk $chunkToUpdateId: ", e) // Keep: Important error
     }
 } 

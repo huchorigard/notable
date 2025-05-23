@@ -169,7 +169,7 @@ class DrawCanvas(
 
         override fun onRawDrawingTouchPointListReceived(plist: TouchPointList) {
             val currentStrokeIdForHandleDraw = currentStrokeIdForManager
-            Log.d("InkTextSync", "DrawCanvas.onRawDrawingTouchPointListReceived: currentStrokeIdForHandleDraw = $currentStrokeIdForHandleDraw, total points received: ${plist.points.size}")
+            // Log.d("InkTextSync", "DrawCanvas.onRawDrawingTouchPointListReceived: currentStrokeIdForHandleDraw = $currentStrokeIdForHandleDraw, total points received: ${plist.points.size}")
             val startTime = System.currentTimeMillis()
             val minPressure = 50f
 
@@ -177,19 +177,17 @@ class DrawCanvas(
             val filteredPoints = plist.points.filter { (it.pressure ?: 0f) >= minPressure }
 
             if (filteredPoints.isEmpty()) {
-                Log.d("InkTextSync", "DrawCanvas.onRawDrawingTouchPointListReceived: No points after pressure filter for stroke ID $currentStrokeIdForHandleDraw. handleDraw will not be called.")
+                // Log.d("InkTextSync", "DrawCanvas.onRawDrawingTouchPointListReceived: No points after pressure filter for stroke ID $currentStrokeIdForHandleDraw. handleDraw will not be called.")
                 return
             }
-            Log.d("InkTextSync", "DrawCanvas.onRawDrawingTouchPointListReceived: ${filteredPoints.size} points after pressure filter for stroke ID $currentStrokeIdForHandleDraw. Calling handleDraw.")
+            // Log.d("InkTextSync", "DrawCanvas.onRawDrawingTouchPointListReceived: ${filteredPoints.size} points after pressure filter for stroke ID $currentStrokeIdForHandleDraw. Calling handleDraw.")
 
             if (getActualState().mode == Mode.Draw) {
                 coroutineScope.launch(Dispatchers.Main.immediate) {
                     drawingInProgress.withLock {
                         val lock = System.currentTimeMillis()
-                        Log.d(TAG, "lock obtained in ${lock - startTime} ms")
-                        // Confirm with StrokeManager IF handleDraw is successful for this ID
+                        // Log.d(TAG, "lock obtained in ${lock - startTime} ms") // Kept general TAG log
                         if (currentStrokeIdForHandleDraw != null) {
-                            // Call handleDraw and then confirm if successful
                             handleDraw(
                                 this@DrawCanvas.page,
                                 strokeHistoryBatch,
@@ -199,12 +197,9 @@ class DrawCanvas(
                                 filteredPoints,
                                 currentStrokeIdForHandleDraw
                             )
-                            // Assuming handleDraw doesn't throw an exception for simple cases like empty points (which is checked before)
-                            // or if it does, this confirmation won't be reached, which is correct.
                             strokeManager.confirmStrokePersisted(currentStrokeIdForHandleDraw)
-                            Log.d("InkTextSync", "DrawCanvas: Confirmed stroke $currentStrokeIdForHandleDraw with StrokeManager.")
+                            // Log.d("InkTextSync", "DrawCanvas: Confirmed stroke $currentStrokeIdForHandleDraw with StrokeManager.")
                         } else {
-                            // Fallback if currentStrokeIdForHandleDraw was null, though less likely with current logic
                             handleDraw(
                                 this@DrawCanvas.page,
                                 strokeHistoryBatch,

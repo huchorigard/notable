@@ -211,7 +211,7 @@ fun handleErase(
             }
             
             if (affectedChunks.isEmpty()) {
-                Log.d("InkTextSync", "handleErase: No chunks were found to be affected by the deleted strokes.")
+                // Log.d("InkTextSync", "handleErase: No chunks were found to be affected by the deleted strokes.") // Potentially useful warning if it happens unexpectedly
             }
 
             for ((chunkId, originalStrokeIdsInChunk) in affectedChunks) {
@@ -252,7 +252,7 @@ fun handleDraw(
     // Log.d("InkTextSync", "handleDraw: Entered. strokeIdToUse: $strokeIdToUse, touchPoints count: ${touchPoints.size}, Pen: $pen")
     try {
         if (touchPoints.isEmpty()) {
-            Log.w("InkTextSync", "handleDraw: touchPoints list is empty, cannot create stroke (strokeIdToUse was $strokeIdToUse).")
+            Log.w("InkTextSync", "handleDraw: touchPoints list is empty, cannot create stroke (strokeIdToUse was $strokeIdToUse).") // Keep as warning
             return
         }
         val initialPoint = touchPoints[0]
