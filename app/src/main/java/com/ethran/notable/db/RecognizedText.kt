@@ -11,6 +11,7 @@ import androidx.room.Update
 import androidx.room.TypeConverters
 import java.util.Date
 import java.util.UUID
+import androidx.room.OnConflictStrategy
 
 @Entity(
     foreignKeys = [
@@ -31,7 +32,7 @@ data class RecognizedText(
     val updatedAt: Date = Date()
 )
 
-@Entity
+@Entity(tableName = "recognized_text_chunk")
 @TypeConverters(StrokeIdListConverter::class)
 data class RecognizedTextChunk(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
@@ -41,6 +42,7 @@ data class RecognizedTextChunk(
     val minY: Float,
     val maxX: Float,
     val maxY: Float,
+    val averageY: Float,
     val timestamp: Long,
     val strokeIds: List<String>
 )
@@ -60,18 +62,24 @@ interface RecognizedTextDao {
     fun deleteByNoteAndPage(noteId: String, pageId: String)
 
     // --- Chunked recognition methods ---
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertChunk(chunk: RecognizedTextChunk): Long
 
     @Update
     fun updateChunk(chunk: RecognizedTextChunk)
 
-    @Query("SELECT * FROM RecognizedTextChunk WHERE pageId = :pageId ORDER BY minY ASC, minX ASC")
+    @Query("SELECT * FROM recognized_text_chunk WHERE pageId = :pageId ORDER BY averageY ASC, minX ASC")
     fun getChunksForPage(pageId: String): List<RecognizedTextChunk>
 
-    @Query("DELETE FROM RecognizedTextChunk WHERE pageId = :pageId")
+    @Query("DELETE FROM recognized_text_chunk WHERE pageId = :pageId")
     fun deleteChunksByPage(pageId: String)
 
-    @Query("DELETE FROM RecognizedTextChunk WHERE ',' || strokeIds || ',' LIKE '%' || :strokeId || '%' ")
+    @Query("DELETE FROM recognized_text_chunk WHERE id = :chunkId")
+    fun deleteChunkById(chunkId: String)
+
+    @Query("DELETE FROM recognized_text_chunk WHERE ',' || strokeIds || ',' LIKE '%' || :strokeId || '%' ")
     fun deleteChunksByStrokeId(strokeId: String)
+
+    @Query("SELECT * FROM recognized_text_chunk WHERE id = :chunkId")
+    fun getChunkById(chunkId: String): RecognizedTextChunk?
 } 

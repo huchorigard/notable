@@ -40,7 +40,7 @@ class AutoMigration30to31 : AutoMigrationSpec
 
 @Database(
     entities = [Folder::class, Notebook::class, Page::class, Stroke::class, Image::class, Kv::class, RecognizedText::class, RecognizedTextChunk::class, PageSummary::class],
-    version = 34,
+    version = 35,
     autoMigrations = [
         AutoMigration(19, 20),
         AutoMigration(20, 21),
@@ -97,7 +97,6 @@ abstract class AppDatabase : RoomDatabase() {
                     INSTANCE =
                         Room.databaseBuilder(context, AppDatabase::class.java, dbFile.absolutePath)
                             .allowMainThreadQueries() // Avoid in production
-                            .fallbackToDestructiveMigration()
                             .addMigrations(MIGRATION_16_17, MIGRATION_17_18, MIGRATION_22_23, MIGRATION_31_32, MIGRATION_32_33)
                             .build()
 

@@ -19,6 +19,7 @@ import com.google.mlkit.vision.digitalink.DigitalInkRecognition
 import com.google.mlkit.vision.digitalink.Ink
 import com.ethran.notable.db.RecognizedTextChunk
 import com.ethran.notable.db.AppDatabase
+import com.google.android.gms.tasks.Tasks
 
 /**
  * Splits the bounding box of all strokes into 1024x1024 px tiles,
@@ -278,6 +279,7 @@ suspend fun recognizeChunkAndExtractMetadata(
     val maxY = allPoints.maxOfOrNull { it.y } ?: 0f
     val width = maxX - minX
     val height = maxY - minY
+    val averageY = if (allPoints.isNotEmpty()) allPoints.map { it.y }.average().toFloat() else 0f
     
     // Get pre-context from previously recognized text
     val db = AppDatabase.getDatabase(context)
@@ -299,6 +301,7 @@ suspend fun recognizeChunkAndExtractMetadata(
     val text = result.candidates.firstOrNull()?.text ?: ""
     val timestamp = allPoints.minOfOrNull { it.timestamp } ?: System.currentTimeMillis()
     val strokeIds = filteredStrokes.map { it.id }
+    // Log.d("InkTextSync", "recognizeChunkAndExtractMetadata: Creating chunk for page $pageId. Text: '$text', StrokeIDs: $strokeIds")
     return RecognizedTextChunk(
         pageId = pageId,
         recognizedText = text,
@@ -306,6 +309,7 @@ suspend fun recognizeChunkAndExtractMetadata(
         minY = minY,
         maxX = maxX,
         maxY = maxY,
+        averageY = averageY,
         timestamp = timestamp,
         strokeIds = strokeIds
     )
@@ -313,12 +317,16 @@ suspend fun recognizeChunkAndExtractMetadata(
 
 fun reconstructTextFromChunks(chunks: List<RecognizedTextChunk>, lineThreshold: Float = 60f): String {
     if (chunks.isEmpty()) return ""
-    // Group by line using minY, then sort by minX within each line
-    val sortedChunks = chunks.sortedWith(compareBy({ it.minY }, { it.minX }))
+    // Debug print chunk info
+    chunks.forEach { chunk ->
+        println("Chunk id=${chunk.id} text='${chunk.recognizedText}' minY=${chunk.minY} averageY=${chunk.averageY}")
+    }
+    // Group by line using averageY, then sort by minX within each line
+    val sortedChunks = chunks.sortedWith(compareBy({ it.averageY }, { it.minX }))
     val lines = mutableListOf<MutableList<RecognizedTextChunk>>()
     for (chunk in sortedChunks) {
         val line = lines.lastOrNull()
-        if (line == null || kotlin.math.abs(chunk.minY - line[0].minY) > lineThreshold) {
+        if (line == null || kotlin.math.abs(chunk.averageY - line[0].averageY) > lineThreshold) {
             lines.add(mutableListOf(chunk))
         } else {
             line.add(chunk)
@@ -331,4 +339,187 @@ fun reconstructTextFromChunks(chunks: List<RecognizedTextChunk>, lineThreshold: 
 
 fun filterHandwritingStrokes(strokes: List<Stroke>): List<Stroke> {
     return strokes.filter { it.pen != Pen.MARKER }
+}
+
+suspend fun updateRecognizedChunkAfterErasure(
+    context: Context,
+    recognizedTextDao: RecognizedTextDao,
+    strokeDao: com.ethran.notable.db.StrokeDao, // Added StrokeDao to fetch strokes
+    pageId: String,
+    chunkToUpdateId: String,
+    remainingStrokeIdsInChunk: List<String>
+) {
+    Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: Called for chunk $chunkToUpdateId. Page: $pageId. Remaining stroke IDs: (${remainingStrokeIdsInChunk.size}) $remainingStrokeIdsInChunk")
+    if (remainingStrokeIdsInChunk.isEmpty()) {
+        recognizedTextDao.deleteChunkById(chunkToUpdateId)
+        Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId deleted as no strokes remain.")
+        return
+    }
+
+    // 1. Fetch the full Stroke objects for the remaining IDs
+    val remainingStrokes = strokeDao.getStrokesByIds(remainingStrokeIdsInChunk)
+    Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: Requested ${remainingStrokeIdsInChunk.size} IDs from DB. Fetched ${remainingStrokes.size} full stroke objects for chunk $chunkToUpdateId.")
+    val fetchedStrokeIds = remainingStrokes.map { it.id }
+    // Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: Requested Stroke IDs: $remainingStrokeIdsInChunk")
+    // Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: Actually Fetched Stroke IDs: $fetchedStrokeIds")
+    val missingStrokeIds = remainingStrokeIdsInChunk.filterNot { it in fetchedStrokeIds }
+    if (missingStrokeIds.isNotEmpty()) {
+        Log.w("InkTextSync", "updateRecognizedChunkAfterErasure: Missing ${missingStrokeIds.size} stroke IDs from DB for chunk $chunkToUpdateId: $missingStrokeIds")
+    }
+
+    if (remainingStrokes.isEmpty()) {
+        // Fallback if somehow remainingStrokeIdsInChunk was not empty but no strokes were found (data integrity issue?)
+        recognizedTextDao.deleteChunkById(chunkToUpdateId)
+        Log.w("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId deleted as no actual strokes were found for the given remaining IDs.")
+        return
+    }
+
+    val filteredRemainingStrokes = filterHandwritingStrokes(remainingStrokes)
+    if (filteredRemainingStrokes.isEmpty()) {
+        // If all remaining strokes were e.g. markers
+        recognizedTextDao.deleteChunkById(chunkToUpdateId)
+        Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId deleted as all remaining strokes were filtered out (e.g. markers).")
+        return
+    }
+
+    // 2. Re-recognize with ML Kit
+    // Create an Ink object from the remaining strokes
+    val inkBuilder = Ink.builder()
+    filteredRemainingStrokes.forEach { stroke -> // Iterate over filtered strokes
+        val strokeBuilder = Ink.Stroke.builder() // Create a new stroke builder for each stroke
+        stroke.points.forEach { sp -> // Iterate over points in the stroke
+            strokeBuilder.addPoint(Ink.Point.create(sp.x, sp.y, sp.timestamp)) // Add points individually
+        }
+        inkBuilder.addStroke(strokeBuilder.build()) // Add the built stroke to the ink
+    }
+    val newInk = inkBuilder.build()
+    // Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: Built new Ink object with ${newInk.strokes.size} strokes for chunk $chunkToUpdateId.")
+
+    if (newInk.strokes.isEmpty()) {
+        // This case should ideally be caught by remainingStrokes.isEmpty() or filteredRemainingStrokes.isEmpty() earlier, but as a safeguard:
+        recognizedTextDao.deleteChunkById(chunkToUpdateId)
+        Log.w("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId deleted as the new Ink object had no strokes after processing remainingStrokeIds.")
+        return
+    }
+
+    // Setup ML Kit Model
+    val modelIdentifier = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en-US")
+    if (modelIdentifier == null) {
+        Log.e("InkTextSync", "updateRecognizedChunkAfterErasure: Failed to get model identifier for re-recognition of chunk $chunkToUpdateId. Language tag: en-US")
+        // Optionally update chunk with error text or delete
+        // recognizedTextDao.deleteChunkById(chunkToUpdateId) // Or mark as error
+        return
+    }
+    val model = DigitalInkRecognitionModel.builder(modelIdentifier).build()
+
+    // Download model if needed
+    try {
+        val remoteModelManager = com.google.mlkit.common.model.RemoteModelManager.getInstance()
+        val isDownloaded = Tasks.await(remoteModelManager.isModelDownloaded(model))
+        if (!isDownloaded) {
+            Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Model for en-US not downloaded for chunk $chunkToUpdateId. Attempting download.")
+            Tasks.await(remoteModelManager.download(model, com.google.mlkit.common.model.DownloadConditions.Builder().build()))
+            Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Model downloaded for en-US for chunk $chunkToUpdateId.")
+        }
+    } catch (e: Exception) {
+        Log.e("InkTextSync", "updateRecognizedChunkAfterErasure: Failed to download/check model for chunk $chunkToUpdateId", e)
+        // Optionally update chunk with error text or delete
+        // recognizedTextDao.deleteChunkById(chunkToUpdateId) // Or mark as error
+        return
+    }
+
+    val recognizer = DigitalInkRecognition.getClient(
+        DigitalInkRecognizerOptions.builder(model).build()
+    )
+
+    try {
+        // Calculate writing area from filtered remaining strokes
+        val allPointsForContext = filteredRemainingStrokes.flatMap { it.points }
+        val minXForContext = allPointsForContext.minOfOrNull { it.x } ?: 0f
+        val minYForContext = allPointsForContext.minOfOrNull { it.y } ?: 0f
+        val maxXForContext = allPointsForContext.maxOfOrNull { it.x } ?: 0f
+        val maxYForContext = allPointsForContext.maxOfOrNull { it.y } ?: 0f
+        val widthForContext = maxXForContext - minXForContext
+        val heightForContext = maxYForContext - minYForContext
+
+        val db = AppDatabase.getDatabase(context)
+        val originalChunk = db.recognizedTextDao().getChunkById(chunkToUpdateId)
+        var preContext = ""
+        val lineThreshold = 60f // Same threshold as in reconstructTextFromChunks
+
+        if (originalChunk != null) {
+            val allChunksOnPage = db.recognizedTextDao().getChunksForPage(pageId)
+
+            // 1. Try to get pre-context from the same line
+            val precedingChunksOnSameLine = allChunksOnPage.filter {
+                it.id != chunkToUpdateId &&
+                kotlin.math.abs(it.averageY - originalChunk.averageY) <= lineThreshold &&
+                it.maxX < originalChunk.minX
+            }.sortedByDescending { it.maxX } // Get the closest one first
+
+            if (precedingChunksOnSameLine.isNotEmpty()) {
+                preContext = precedingChunksOnSameLine.first().recognizedText.takeLast(20)
+                Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: PreContext from same line for chunk $chunkToUpdateId: '$preContext'")
+            } else {
+                // 2. If no preceding on same line, try lines above
+                val chunksAbove = allChunksOnPage.filter {
+                    it.id != chunkToUpdateId &&
+                    it.averageY < originalChunk.averageY - lineThreshold // Significantly above
+                }
+                if (chunksAbove.isNotEmpty()) {
+                    // reconstructTextFromChunks sorts by averageY then minX, effectively creating reading order
+                    preContext = reconstructTextFromChunks(chunksAbove).takeLast(20)
+                    Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: PreContext from lines above for chunk $chunkToUpdateId: '$preContext'")
+                }
+                // If still empty, preContext remains "" (first content on page)
+            }
+        } else {
+            Log.w("InkTextSync", "updateRecognizedChunkAfterErasure: Could not find original chunk $chunkToUpdateId. Using page-wide fallback for pre-context.")
+            // 3. Fallback if original chunk isn't found (should be rare)
+            val allOtherChunksOnPageForFallback = db.recognizedTextDao().getChunksForPage(pageId).filterNot { it.id == chunkToUpdateId }
+            if (allOtherChunksOnPageForFallback.isNotEmpty()) {
+                preContext = reconstructTextFromChunks(allOtherChunksOnPageForFallback).takeLast(20)
+                Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: PreContext from page-wide fallback for chunk $chunkToUpdateId: '$preContext'")
+            }
+        }
+        Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Final PreContext for chunk $chunkToUpdateId: '$preContext'")
+
+        val recognitionContext = com.google.mlkit.vision.digitalink.RecognitionContext.builder()
+            .setWritingArea(com.google.mlkit.vision.digitalink.WritingArea(widthForContext, heightForContext))
+            .setPreContext(preContext)
+            .build()
+
+        val result = Tasks.await(recognizer.recognize(newInk, recognitionContext)) // Pass context
+        val newRecognizedText = result.candidates.firstOrNull()?.text ?: ""
+        Log.d("InkTextSync", "updateRecognizedChunkAfterErasure: ML Kit re-recognized for chunk $chunkToUpdateId. New text: '$newRecognizedText'")
+
+        // 3. Calculate new bounding box and averageY for the updated chunk using filtered strokes
+        val allPointsForUpdate = filteredRemainingStrokes.flatMap { it.points } // Use filtered strokes for bounds
+        val newMinX = allPointsForUpdate.minOfOrNull { it.x } ?: 0f
+        val newMinY = allPointsForUpdate.minOfOrNull { it.y } ?: 0f
+        val newMaxX = allPointsForUpdate.maxOfOrNull { it.x } ?: 0f
+        val newMaxY = allPointsForUpdate.maxOfOrNull { it.y } ?: 0f
+        val newAverageY = if (allPointsForUpdate.isNotEmpty()) allPointsForUpdate.map { it.y }.average().toFloat() else 0f
+
+        // 4. Update the existing chunk in the database
+        val updatedChunk = RecognizedTextChunk(
+            id = chunkToUpdateId, // Keep the same ID
+            pageId = pageId,
+            recognizedText = newRecognizedText,
+            minX = newMinX,
+            minY = newMinY,
+            maxX = newMaxX,
+            maxY = newMaxY,
+            averageY = newAverageY,
+            timestamp = System.currentTimeMillis(), // Update timestamp
+            strokeIds = filteredRemainingStrokes.map { it.id } // Use IDs of filtered remaining strokes
+        )
+        recognizedTextDao.insertChunk(updatedChunk) // Assuming insertChunk handles updates on conflict (e.g., @Insert(onConflict = OnConflictStrategy.REPLACE))
+        Log.i("InkTextSync", "updateRecognizedChunkAfterErasure: Chunk $chunkToUpdateId updated in DB. New text: '$newRecognizedText', new avgY: $newAverageY")
+
+    } catch (e: Exception) {
+        Log.e("InkTextSync", "updateRecognizedChunkAfterErasure: Error during ML Kit recognition or DB update for chunk $chunkToUpdateId: ", e)
+        // Decide on error handling: re-throw, delete chunk, or leave as is?
+        // For now, let's leave it, but this might lead to stale data.
+    }
 } 

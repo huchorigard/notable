@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 34,
-    "identityHash": "6d76a5a92f8b73565b78fe54873253d4",
+    "version": 35,
+    "identityHash": "38275c07ffb0a6c702b98dbd028cb050",
     "entities": [
       {
         "tableName": "Folder",
@@ -559,7 +559,7 @@
         ]
       },
       {
-        "tableName": "RecognizedTextChunk",
+        "tableName": "recognized_text_chunk",
         "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `pageId` TEXT NOT NULL, `recognizedText` TEXT NOT NULL, `minX` REAL NOT NULL, `minY` REAL NOT NULL, `maxX` REAL NOT NULL, `maxY` REAL NOT NULL, `averageY` REAL NOT NULL, `timestamp` INTEGER NOT NULL, `strokeIds` TEXT NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
@@ -663,7 +663,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6d76a5a92f8b73565b78fe54873253d4')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '38275c07ffb0a6c702b98dbd028cb050')"
     ]
   }
 }

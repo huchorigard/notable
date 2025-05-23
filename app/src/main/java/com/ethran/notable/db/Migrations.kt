@@ -51,3 +51,9 @@ val MIGRATION_31_32 = object : Migration(31, 32) {
         )
     }
 }
+
+val MIGRATION_32_33 = object : Migration(32, 33) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE RecognizedTextChunk ADD COLUMN averageY REAL NOT NULL DEFAULT 0")
+    }
+}

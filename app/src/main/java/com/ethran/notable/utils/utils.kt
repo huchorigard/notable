@@ -41,6 +41,8 @@ import com.ethran.notable.db.StrokePoint
 import com.ethran.notable.modals.AppSettings
 import com.onyx.android.sdk.data.note.TouchPoint
 import io.shipbook.shipbooksdk.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
@@ -48,6 +50,7 @@ import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.util.UUID
 
 fun Modifier.noRippleClickable(
     onClick: () -> Unit
@@ -139,8 +142,10 @@ fun handleErase(
     history: History,
     points: List<SimplePointF>,
     eraser: Eraser,
-    context: Context
+    context: Context,
+    coroutineScope: CoroutineScope
 ) {
+    // Log.d("InkTextSync", "handleErase: Function entered. Eraser type: $eraser, Point count: ${points.size}")
     val paint = Paint().apply {
         this.strokeWidth = 30f
         this.style = Paint.Style.STROKE
@@ -162,18 +167,69 @@ fun handleErase(
     }
 
     val deletedStrokes = selectStrokesFromPath(page.strokes, outPath)
+    // Log.d("InkTextSync", "handleErase: Selected ${deletedStrokes.size} strokes for deletion.")
+    if (deletedStrokes.isEmpty()) {
+        // Log.d("InkTextSync", "handleErase: No strokes selected for deletion, exiting.")
+        return
+    }
+
     val deletedStrokeIds = deletedStrokes.map { it.id }
+    // Log.d("InkTextSync", "handleErase: Deleted stroke IDs: $deletedStrokeIds")
     page.removeStrokes(deletedStrokeIds)
     history.addOperationsToHistory(listOf(Operation.AddStroke(deletedStrokes)))
     page.drawArea(
         area = pageAreaToCanvasArea(strokeBounds(deletedStrokes), page.scroll)
     )
 
-    // --- Remove recognized text chunks for erased strokes ---
-    val db = AppDatabase.getDatabase(context)
-    val recognizedTextDao = db.recognizedTextDao()
-    deletedStrokeIds.forEach { strokeId ->
-        recognizedTextDao.deleteChunksByStrokeId(strokeId)
+    // --- Update recognized text chunks for erased strokes ---
+    coroutineScope.launch(Dispatchers.IO) { // Perform DB and recognition tasks off the main thread
+        // Log.d("InkTextSync", "handleErase: Coroutine launched for updating recognized text.")
+        try {
+            val db = AppDatabase.getDatabase(context)
+            val recognizedTextDao = db.recognizedTextDao()
+            val strokeDao = db.strokeDao()
+            // Log.d("InkTextSync", "handleErase: DB and DAOs obtained.")
+
+            // Find all chunks that might be affected by any of the deleted strokes
+            val allChunksOnPage = recognizedTextDao.getChunksForPage(page.id)
+            // Log.d("InkTextSync", "handleErase: Fetched ${allChunksOnPage.size} chunks for page ${page.id}.")
+            /*allChunksOnPage.forEachIndexed { index, chunk ->
+                Log.d("InkTextSync", "handleErase: Chunk $index ID: ${chunk.id}, Text: '${chunk.recognizedText}', StrokeIDs: ${chunk.strokeIds}")
+            }*/
+            val affectedChunks = mutableMapOf<String, MutableList<String>>() // ChunkID to List of its original strokeIDs
+
+            for (chunk in allChunksOnPage) {
+                for (deletedId in deletedStrokeIds) {
+                    if (chunk.strokeIds.contains(deletedId)) {
+                        if (!affectedChunks.containsKey(chunk.id)) {
+                            affectedChunks[chunk.id] = chunk.strokeIds.toMutableList()
+                            // Log.d("InkTextSync", "handleErase: Chunk ${chunk.id} marked as affected by deleted stroke $deletedId.")
+                        }
+                        // No need to break, one chunk might contain multiple deleted strokes (though unlikely with current chunking)
+                    }
+                }
+            }
+            
+            if (affectedChunks.isEmpty()) {
+                Log.d("InkTextSync", "handleErase: No chunks were found to be affected by the deleted strokes.")
+            }
+
+            for ((chunkId, originalStrokeIdsInChunk) in affectedChunks) {
+                val remainingStrokeIdsInAffectedChunk = originalStrokeIdsInChunk.filterNot { it in deletedStrokeIds }.toMutableList()
+                // Log.d("InkTextSync", "handleErase: Before calling updateRecognizedChunkAfterErasure for chunk $chunkId. Original strokes: $originalStrokeIdsInChunk, Deleted: $deletedStrokeIds, Remaining: $remainingStrokeIdsInAffectedChunk")
+                updateRecognizedChunkAfterErasure(
+                    context = context,
+                    recognizedTextDao = recognizedTextDao,
+                    strokeDao = strokeDao,
+                    pageId = page.id,
+                    chunkToUpdateId = chunkId,
+                    remainingStrokeIdsInChunk = remainingStrokeIdsInAffectedChunk
+                )
+            }
+            // TODO: Consider notifying UI to refresh recognized text if it's displayed live and not part of the general page.drawArea() refresh
+        } catch (e: Exception) {
+            Log.e("InkTextSync", "handleErase: Exception in coroutine for recognized text update", e)
+        }
     }
 }
 
@@ -190,9 +246,15 @@ fun handleDraw(
     strokeSize: Float,
     color: Int,
     pen: Pen,
-    touchPoints: List<TouchPoint>
+    touchPoints: List<TouchPoint>,
+    strokeIdToUse: String?
 ) {
+    // Log.d("InkTextSync", "handleDraw: Entered. strokeIdToUse: $strokeIdToUse, touchPoints count: ${touchPoints.size}, Pen: $pen")
     try {
+        if (touchPoints.isEmpty()) {
+            Log.w("InkTextSync", "handleDraw: touchPoints list is empty, cannot create stroke (strokeIdToUse was $strokeIdToUse).")
+            return
+        }
         val initialPoint = touchPoints[0]
         val boundingBox = RectF(
             initialPoint.x,
@@ -217,6 +279,7 @@ fun handleDraw(
         boundingBox.inset(-strokeSize, -strokeSize)
 
         val stroke = Stroke(
+            id = strokeIdToUse ?: UUID.randomUUID().toString(),
             size = strokeSize,
             pen = pen,
             pageId = page.id,
@@ -227,12 +290,14 @@ fun handleDraw(
             points = points,
             color = color
         )
+        // Log.d("InkTextSync", "handleDraw: Created Stroke object with ID: ${stroke.id}. (Used passed ID: ${strokeIdToUse != null})")
         page.addStrokes(listOf(stroke))
+        // Log.d("InkTextSync", "handleDraw: Stroke ${stroke.id} added to page.strokes.")
         // this is causing lagging and crushing, neo pens are not good
         page.drawArea(pageAreaToCanvasArea(strokeBounds(stroke).toRect(), page.scroll))
         historyBucket.add(stroke.id)
     } catch (e: Exception) {
-        Log.e(TAG, "Handle Draw: An error occurred while handling the drawing: ${e.message}")
+        Log.e("InkTextSync", "handleDraw: An error occurred: ${e.message}", e)
     }
 }
 
@@ -277,7 +342,7 @@ fun handleLine(
         TouchPoint(x, y, pressure, size, tiltX, tiltY, timestamp)
     }
 
-    handleDraw(page, historyBucket, strokeSize, color, pen, points2)
+    handleDraw(page, historyBucket, strokeSize, color, pen, points2, null)
 }
 
 

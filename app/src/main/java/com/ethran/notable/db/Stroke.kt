@@ -91,6 +91,8 @@ interface StrokeDao {
         pageId: String
     ): List<Stroke>
 
+    @Query("SELECT * FROM stroke WHERE id IN (:strokeIds)")
+    fun getStrokesByIds(strokeIds: List<String>): List<Stroke>
 }
 
 class StrokeRepository(context: Context) {

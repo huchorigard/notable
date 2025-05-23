@@ -85,7 +85,7 @@ class DrawCanvas(
 ) : SurfaceView(context) {
     private val strokeHistoryBatch = mutableListOf<String>()
     private val strokeManager = StrokeManager(context, coroutineScope, page.id)
-    private var currentStrokeId: String? = null
+    private var currentStrokeIdForManager: String? = null
 
     // Add these properties to DrawCanvas
     private val realTimeStrokeBuffer = mutableListOf<com.ethran.notable.db.Stroke>()
@@ -122,7 +122,7 @@ class DrawCanvas(
     private val inputCallback: RawInputCallback = object : RawInputCallback() {
         override fun onBeginRawDrawing(p0: Boolean, p1: TouchPoint?) {
             if (p1 != null) {
-                currentStrokeId = UUID.randomUUID().toString()
+                currentStrokeIdForManager = UUID.randomUUID().toString()
                 val event = MotionEvent.obtain(
                     System.currentTimeMillis(),
                     System.currentTimeMillis(),
@@ -131,7 +131,7 @@ class DrawCanvas(
                     p1.y,
                     0
                 )
-                strokeManager.addNewTouchEvent(event, currentStrokeId)
+                strokeManager.addNewTouchEvent(event, currentStrokeIdForManager)
                 event.recycle()
             }
         }
@@ -146,9 +146,9 @@ class DrawCanvas(
                     p1.y,
                     0
                 )
-                strokeManager.addNewTouchEvent(event, currentStrokeId)
+                strokeManager.addNewTouchEvent(event, currentStrokeIdForManager)
                 event.recycle()
-                currentStrokeId = null
+                currentStrokeIdForManager = null
             }
         }
 
@@ -162,12 +162,14 @@ class DrawCanvas(
                     p0.y,
                     0
                 )
-                strokeManager.addNewTouchEvent(event, currentStrokeId)
+                strokeManager.addNewTouchEvent(event, currentStrokeIdForManager)
                 event.recycle()
             }
         }
 
         override fun onRawDrawingTouchPointListReceived(plist: TouchPointList) {
+            val currentStrokeIdForHandleDraw = currentStrokeIdForManager
+            Log.d("InkTextSync", "DrawCanvas.onRawDrawingTouchPointListReceived: currentStrokeIdForHandleDraw = $currentStrokeIdForHandleDraw, total points received: ${plist.points.size}")
             val startTime = System.currentTimeMillis()
             val minPressure = 50f
 
@@ -175,48 +177,47 @@ class DrawCanvas(
             val filteredPoints = plist.points.filter { (it.pressure ?: 0f) >= minPressure }
 
             if (filteredPoints.isEmpty()) {
-                Log.d(TAG, "No points above pressure threshold ($minPressure)")
+                Log.d("InkTextSync", "DrawCanvas.onRawDrawingTouchPointListReceived: No points after pressure filter for stroke ID $currentStrokeIdForHandleDraw. handleDraw will not be called.")
                 return
             }
+            Log.d("InkTextSync", "DrawCanvas.onRawDrawingTouchPointListReceived: ${filteredPoints.size} points after pressure filter for stroke ID $currentStrokeIdForHandleDraw. Calling handleDraw.")
 
             if (getActualState().mode == Mode.Draw) {
                 coroutineScope.launch(Dispatchers.Main.immediate) {
                     drawingInProgress.withLock {
                         val lock = System.currentTimeMillis()
                         Log.d(TAG, "lock obtained in ${lock - startTime} ms")
-                        handleDraw(
-                            this@DrawCanvas.page,
-                            strokeHistoryBatch,
-                            getActualState().penSettings[getActualState().pen.penName]!!.strokeSize,
-                            getActualState().penSettings[getActualState().pen.penName]!!.color,
-                            getActualState().pen,
-                            filteredPoints
-                        )
+                        // Confirm with StrokeManager IF handleDraw is successful for this ID
+                        if (currentStrokeIdForHandleDraw != null) {
+                            // Call handleDraw and then confirm if successful
+                            handleDraw(
+                                this@DrawCanvas.page,
+                                strokeHistoryBatch,
+                                getActualState().penSettings[getActualState().pen.penName]!!.strokeSize,
+                                getActualState().penSettings[getActualState().pen.penName]!!.color,
+                                getActualState().pen,
+                                filteredPoints,
+                                currentStrokeIdForHandleDraw
+                            )
+                            // Assuming handleDraw doesn't throw an exception for simple cases like empty points (which is checked before)
+                            // or if it does, this confirmation won't be reached, which is correct.
+                            strokeManager.confirmStrokePersisted(currentStrokeIdForHandleDraw)
+                            Log.d("InkTextSync", "DrawCanvas: Confirmed stroke $currentStrokeIdForHandleDraw with StrokeManager.")
+                        } else {
+                            // Fallback if currentStrokeIdForHandleDraw was null, though less likely with current logic
+                            handleDraw(
+                                this@DrawCanvas.page,
+                                strokeHistoryBatch,
+                                getActualState().penSettings[getActualState().pen.penName]!!.strokeSize,
+                                getActualState().penSettings[getActualState().pen.penName]!!.color,
+                                getActualState().pen,
+                                filteredPoints,
+                                null // Pass null if currentStrokeIdForHandleDraw is null
+                            )
+                        }
                     }
                     coroutineScope.launch {
                         commitHistorySignal.emit(Unit)
-                    }
-                }
-                coroutineScope.launch {
-                    // Add the last stroke to the buffer
-                    val lastStroke = page.strokes.lastOrNull()
-                    if (lastStroke != null) {
-                        realTimeStrokeBuffer.add(lastStroke)
-                    }
-                    // Cancel any pending recognition
-                    recognitionJob?.cancel()
-                    // Start a new debounce job
-                    recognitionJob = coroutineScope.launch {
-                        kotlinx.coroutines.delay(800) // 800ms pause
-                        if (realTimeStrokeBuffer.isNotEmpty()) {
-                            val filteredStrokes = filterHandwritingStrokes(realTimeStrokeBuffer)
-                            if (filteredStrokes.isNotEmpty()) {
-                                val chunk = recognizeChunkAndExtractMetadata(context, filteredStrokes, page.id)
-                                val db = AppDatabase.getDatabase(context)
-                                db.recognizedTextDao().insertChunk(chunk)
-                            }
-                            realTimeStrokeBuffer.clear()
-                        }
                     }
                 }
             } else thread {
@@ -226,7 +227,8 @@ class DrawCanvas(
                         history,
                         filteredPoints.map { SimplePointF(it.x, it.y + page.scroll) },
                         eraser = getActualState().eraser,
-                        context
+                        context,
+                        coroutineScope
                     )
                     drawCanvasToView()
                     refreshUi()
@@ -271,7 +273,8 @@ class DrawCanvas(
                 history,
                 plist.points.map { SimplePointF(it.x, it.y + page.scroll) },
                 eraser = getActualState().eraser,
-                context
+                context,
+                coroutineScope
             )
             drawCanvasToView()
             refreshUi()
