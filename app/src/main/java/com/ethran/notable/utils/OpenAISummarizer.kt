@@ -14,11 +14,10 @@ import kotlinx.coroutines.withContext
 object OpenAISummarizer {
     private val client = OkHttpClient()
     private const val API_URL = "https://api.openai.com/v1/chat/completions"
-    private const val MODEL = "gpt-4.1" // Changed to a known valid model name
+    private const val MODEL = "gpt-4.1"
     private const val TAG = "OpenAISummarizer"
 
     suspend fun summarize(apiKey: String, prompt: String): String {
-        Log.i(TAG, "In the summarize function")
         return try {
             val json = JSONObject().apply {
                 put("model", MODEL)
@@ -30,51 +29,39 @@ object OpenAISummarizer {
                 put("temperature", 0.7)
                 put("top_p", 1.0)
             }
-            Log.i(TAG, "json defined $json")
             val body = json.toString().toRequestBody("application/json".toMediaType())
-            Log.i(TAG, "body defined $body")
             val request = Request.Builder()
                 .url(API_URL)
                 .addHeader("Authorization", "Bearer $apiKey")
                 .addHeader("Content-Type", "application/json")
                 .post(body)
                 .build()
-            Log.i(TAG, "request defined $request")
+
             return withContext(Dispatchers.IO) {
                 val response = try {
                     client.newCall(request).execute()
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error executing request", e)
                     throw e
                 }
-                Log.i(TAG, "response defined $response")
                 if (!response.isSuccessful) {
                     val errorBody = response.body?.string() ?: "No error body"
-                    Log.e(TAG, "OpenAI API error: code=${response.code}, message=${response.message}, body=$errorBody")
                     return@withContext "[Summary error: OpenAI API error ${response.code} - ${response.message}]"
                 }
                 val responseBody = response.body?.string()
-                Log.i(TAG, "OpenAI API raw response body: $responseBody")
                 if (responseBody == null) return@withContext "[Summary error: empty response]"
                 try {
-                    Log.i(TAG, "Parsing OpenAI response JSON")
                     val responseJson = JSONObject(responseBody)
-                    val summary = responseJson
+                    responseJson
                         .getJSONArray("choices")
                         .getJSONObject(0)
                         .getJSONObject("message")
                         .getString("content")
                         .trim()
-                    Log.i(TAG, "Parsed summary: $summary")
-                    summary
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing OpenAI response: $responseBody", e)
                     "[Summary error: ${e.message ?: "unknown error"}]"
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Exception in summarize: ${e::class.java.simpleName}: ${e.message}", e)
-            e.printStackTrace()
             "[Summary error: ${e.message ?: "unknown error"}]"
         }
     }
@@ -85,9 +72,11 @@ object OpenAISummarizer {
         userInfo: String,
         availableTags: List<Tag>
     ): List<Tag> {
-        Log.i(TAG, "In the suggestTags function")
+        Log.i(TAG, "Starting tag suggestion process")
         try {
             val tagNames = availableTags.map { it.name }
+            Log.i(TAG, "Available tags for suggestion: ${tagNames.joinToString(", ")}")
+            
             val prompt = """
                 Based on the following note content and user information, suggest appropriate tags from the available list.
                 Only respond with a comma-separated list of tags, no quotes, no explanations.
@@ -105,6 +94,7 @@ object OpenAISummarizer {
                 Selected tags (comma separated, no quotes):
             """.trimIndent()
 
+            Log.i(TAG, "Sending request to OpenAI for tag suggestions")
             val json = JSONObject().apply {
                 put("model", MODEL)
                 put("messages", JSONArray().put(JSONObject().apply {
@@ -115,7 +105,6 @@ object OpenAISummarizer {
                 put("temperature", 0.7)
             }
 
-            Log.i(TAG, "json defined $json")
             val body = json.toString().toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
                 .url(API_URL)
@@ -132,7 +121,7 @@ object OpenAISummarizer {
                 }
 
                 val responseBody = response.body?.string()
-                Log.i(TAG, "OpenAI API raw response body: $responseBody")
+                Log.i(TAG, "Received raw response from OpenAI: $responseBody")
                 
                 if (responseBody == null) {
                     Log.e(TAG, "Empty response from OpenAI")
@@ -147,26 +136,33 @@ object OpenAISummarizer {
                         .getJSONObject("message")
                         .getString("content")
                         .trim()
+                    
+                    Log.i(TAG, "OpenAI suggested tags string: $suggestedTagsStr")
 
                     // Split the comma-separated response and trim each tag
-                    val suggestedTags = suggestedTagsStr
+                    val suggestedTagNames = suggestedTagsStr
                         .split(",")
                         .map { it.trim() }
                         .filter { it.isNotEmpty() }
+                    
+                    Log.i(TAG, "Parsed suggested tag names: ${suggestedTagNames.joinToString(", ")}")
 
                     // Match suggested tags with available tags using fuzzy matching
-                    return@withContext suggestedTags.mapNotNull { suggestedTag ->
+                    val matchedTags = suggestedTagNames.mapNotNull { suggestedTag ->
                         availableTags.find { availableTag ->
                             StringUtils.fuzzyMatch(suggestedTag, availableTag.name)
                         }
                     }
+
+                    Log.i(TAG, "Final matched tags: ${matchedTags.map { it.name }.joinToString(", ")}")
+                    return@withContext matchedTags
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing OpenAI response: $responseBody", e)
+                    Log.e(TAG, "Error parsing OpenAI response: ${e.message}")
                     emptyList()
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Exception in suggestTags: ${e::class.java.simpleName}: ${e.message}", e)
+            Log.e(TAG, "Exception in suggestTags: ${e.message}", e)
             return emptyList()
         }
     }

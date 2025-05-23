@@ -9,6 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.Date
+import androidx.lifecycle.LiveData
 
 
 class Converters {
@@ -88,15 +89,26 @@ interface TagDao {
     @Query("SELECT t.* FROM tags t INNER JOIN page_tag_cross_ref pt ON t.id = pt.tagId WHERE pt.pageId = :pageId")
     fun getTagsForPage(pageId: String): List<Tag>
 
+    @Query("SELECT t.* FROM tags t INNER JOIN page_tag_cross_ref pt ON t.id = pt.tagId WHERE pt.pageId = :pageId")
+    fun getTagsForPageLive(pageId: String): LiveData<List<Tag>>
+
     @Transaction
     fun setTagsForPage(pageId: String, tags: List<Tag>) {
         // Remove existing tags for the page
         deleteTagsForPage(pageId)
         
-        // Insert new tags and cross references
-        tags.forEach { tag ->
-            insertTag(tag)
-            insertPageTagCrossRef(PageTagCrossRef(pageId = pageId, tagId = tag.id))
+        // For each tag, find existing one with same name or create new
+        tags.forEach { newTag ->
+            val existingTag = getAllTags().find { it.name == newTag.name }
+            val tagToUse = existingTag ?: newTag
+            
+            // Insert tag if it's new
+            if (existingTag == null) {
+                insertTag(tagToUse)
+            }
+            
+            // Create cross reference
+            insertPageTagCrossRef(PageTagCrossRef(pageId = pageId, tagId = tagToUse.id))
         }
     }
 
@@ -176,6 +188,16 @@ abstract class AppDatabase : RoomDatabase() {
                 // Create indices for better query performance
                 database.execSQL("CREATE INDEX IF NOT EXISTS index_page_tag_cross_ref_pageId ON page_tag_cross_ref(pageId)")
                 database.execSQL("CREATE INDEX IF NOT EXISTS index_page_tag_cross_ref_tagId ON page_tag_cross_ref(tagId)")
+
+                // Insert default tags
+                val defaultTags = listOf("Work", "Personal", "Ideas", "To-Do", "Important", "Learning", "Meeting")
+                defaultTags.forEach { tagName ->
+                    val tagId = java.util.UUID.randomUUID().toString()
+                    database.execSQL(
+                        "INSERT INTO tags (id, name) VALUES (?, ?)",
+                        arrayOf(tagId, tagName)
+                    )
+                }
             }
         }
 
@@ -190,7 +212,7 @@ abstract class AppDatabase : RoomDatabase() {
                     }
                     val dbFile = File(dbDir, "app_database")
 
-                    // Use Room to build the database
+                    // Migration for PageSummary table
                     val MIGRATION_32_33 = object : Migration(32, 33) {
                         override fun migrate(database: SupportSQLiteDatabase) {
                             database.execSQL("""
@@ -203,9 +225,25 @@ abstract class AppDatabase : RoomDatabase() {
                         }
                     }
 
+                    val callback = object : RoomDatabase.Callback() {
+                        override fun onCreate(db: SupportSQLiteDatabase) {
+                            super.onCreate(db)
+                            // Insert default tags for new installations
+                            val defaultTags = listOf("Work", "Personal", "Ideas", "To-Do", "Important", "Learning", "Meeting")
+                            defaultTags.forEach { tagName ->
+                                val tagId = java.util.UUID.randomUUID().toString()
+                                db.execSQL(
+                                    "INSERT INTO tags (id, name) VALUES (?, ?)",
+                                    arrayOf(tagId, tagName)
+                                )
+                            }
+                        }
+                    }
+
                     INSTANCE =
                         Room.databaseBuilder(context, AppDatabase::class.java, dbFile.absolutePath)
                             .allowMainThreadQueries() // Avoid in production
+                            .addCallback(callback)
                             .addMigrations(
                                 MIGRATION_16_17, 
                                 MIGRATION_17_18, 
@@ -215,7 +253,6 @@ abstract class AppDatabase : RoomDatabase() {
                                 MIGRATION_35_36
                             )
                             .build()
-
                 }
             }
             return INSTANCE!!

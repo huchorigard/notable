@@ -326,6 +326,13 @@ fun NoteCard(
     val summaryLive = remember(pageId) { db.pageSummaryDao().getSummaryLive(pageId) }
     val summary = summaryLive.observeAsState().value?.summaryText
 
+    // Get tags using LiveData
+    val tagsLive = remember(pageId) { db.tagDao().getTagsForPageLive(pageId) }
+    val tags = tagsLive.observeAsState().value
+    val tagsText = if (!tags.isNullOrEmpty()) {
+        tags.joinToString(", ") { it.name }
+    } else null
+
     var updatedAt by remember(pageId) { mutableStateOf<Long?>(null) }
     LaunchedEffect(pageId) {
         val page = db.pageDao().getById(pageId)
@@ -368,9 +375,19 @@ fun NoteCard(
             Text(
                 text = summary ?: "Summarizing...",
                 style = MaterialTheme.typography.body2,
-                maxLines = 5,
+                maxLines = 4, // Reduced to make room for tags
                 modifier = Modifier.weight(1f)
             )
+            if (!tagsText.isNullOrEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = tagsText,
+                    style = MaterialTheme.typography.caption,
+                    color = Color.Gray,
+                    fontSize = 10.sp,
+                    maxLines = 1
+                )
+            }
         }
 
         if (isContextMenuVisible) {
