@@ -71,8 +71,6 @@ import com.ethran.notable.db.PageSummary
 import com.ethran.notable.db.PageSummaryDao
 import java.util.Date
 import kotlinx.coroutines.runBlocking
-import com.ethran.notable.utils.GemmaModelManager
-import com.ethran.notable.utils.GemmaMediaPipeSummarizer
 import androidx.compose.runtime.rememberUpdatedState
 import android.content.Context
 import kotlinx.coroutines.GlobalScope

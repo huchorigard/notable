@@ -28,7 +28,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Badge
 import androidx.compose.material.BadgedBox
+import androidx.compose.material.Button
+import androidx.compose.material.ButtonDefaults
 import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,8 +48,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.ethran.notable.TAG
 import com.ethran.notable.classes.AppRepository
@@ -69,6 +75,8 @@ import com.ethran.notable.modals.UserInfoDialog
 import com.ethran.notable.utils.isLatestVersion
 import com.ethran.notable.utils.noRippleClickable
 import compose.icons.FeatherIcons
+import compose.icons.feathericons.ChevronDown
+import compose.icons.feathericons.ChevronUp
 import compose.icons.feathericons.FilePlus
 import compose.icons.feathericons.Folder
 import compose.icons.feathericons.FolderPlus
@@ -79,23 +87,58 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlin.concurrent.thread
+import com.ethran.notable.db.AppDatabase
+import java.text.SimpleDateFormat
+import java.util.Locale
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.foundation.clickable
+import java.io.File
 
 @ExperimentalFoundationApi
 @ExperimentalComposeUiApi
 @Composable
 fun Library(navController: NavController, folderId: String? = null) {
     val context = LocalContext.current
-
     var isSettingsOpen by remember {
         mutableStateOf(false)
     }
-    val appRepository = AppRepository(LocalContext.current)
+    val appRepository = AppRepository(context)
+
+    val singlePagesState by appRepository.pageRepository.getSinglePagesInFolder(folderId).observeAsState()
+
+    val allNotesData: List<Page> = remember(singlePagesState) {
+        (singlePagesState ?: emptyList()).reversed() // Show most recent first (already Page objects)
+    }
+
+    val itemsPerPage = 6
+    var currentPage by remember { mutableStateOf(0) }
+    val totalPages = remember(allNotesData.size) {
+        (allNotesData.size + itemsPerPage - 1) / itemsPerPage
+    }
+    if (currentPage >= totalPages && totalPages > 0) {
+        currentPage = totalPages - 1
+    } else if (totalPages == 0) {
+        currentPage = 0
+    }
+
+    val paginatedNotes = remember(allNotesData, currentPage) {
+        if (allNotesData.isNotEmpty()) {
+            allNotesData.drop(currentPage * itemsPerPage).take(itemsPerPage)
+        } else {
+            emptyList()
+        }
+    }
 
     val books by appRepository.bookRepository.getAllInFolder(folderId).observeAsState()
     val singlePages by appRepository.pageRepository.getSinglePagesInFolder(folderId)
         .observeAsState()
     val folders by appRepository.folderRepository.getAllInFolder(folderId).observeAsState()
-    val bookRepository = BookRepository(LocalContext.current)
+    val bookRepository = BookRepository(context)
 
     var isLatestVersion by remember {
         mutableStateOf(true)
@@ -115,64 +158,128 @@ fun Library(navController: NavController, folderId: String? = null) {
 
     var showUserInfo by remember { mutableStateOf(false) }
 
+    // State for context menu - now tracks which pageId has an active menu
+    var contextMenuForPageId by remember { mutableStateOf<String?>(null) }
+
     Column(
-        Modifier.fillMaxSize()
+        Modifier
+            .fillMaxSize()
+            .padding(16.dp)
     ) {
-        Topbar {
-            Row(Modifier.fillMaxWidth()) {
-                Spacer(modifier = Modifier.weight(1f))
-                BadgedBox(
-                    badge = {
-                        if (!isLatestVersion) Badge(
-                            backgroundColor = Color.Black,
-                            modifier = Modifier.offset(-12.dp, 10.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Welcome back",
+                style = MaterialTheme.typography.h5.copy(fontWeight = FontWeight.Bold)
+            )
+            Button(
+                onClick = {
+                    val page = Page(
+                        notebookId = null,
+                        background = GlobalAppSettings.current.defaultNativeTemplate,
+                        parentFolderId = folderId
+                    )
+                    appRepository.pageRepository.create(page)
+                    navController.navigate("pages/${page.id}")
+                },
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(backgroundColor = Color.LightGray),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Text("New Note", fontSize = 16.sp)
+            }
+        }
+
+        Text(
+            text = "Explore what you wrote recently:",
+            style = MaterialTheme.typography.subtitle1,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        Box { // Box remains to ensure Popups from NoteCards can overlay other UI if necessary, though anchoring is now internal to NoteCard
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(paginatedNotes) { page ->
+                        NoteCard(
+                            pageId = page.id,
+                            isContextMenuVisible = contextMenuForPageId == page.id,
+                            onLongClick = {
+                                contextMenuForPageId = page.id
+                            },
+                            onDismissContextMenu = {
+                                contextMenuForPageId = null
+                            },
+                            onDeleteRequest = { pageIdToDelete ->
+                                Log.i(TAG, "Delete requested for page: $pageIdToDelete")
+                                // Delete preview files
+                                val previewDir = File(context.filesDir, "pages/previews/full")
+                                val previewFile = File(previewDir, pageIdToDelete)
+                                if (previewFile.exists()) {
+                                    previewFile.delete()
+                                }
+                                // Delete the page from database
+                                appRepository.pageRepository.delete(pageIdToDelete)
+                                // Delete the page summary
+                                AppDatabase.getDatabase(context).pageSummaryDao().deleteSummary(pageIdToDelete)
+                                contextMenuForPageId = null
+                            },
+                            onCardClick = { pageId ->
+                                navController.navigate("pages/$pageId")
+                            }
                         )
                     }
+                }
+
+                Column(
+                    modifier = Modifier.padding(start = 8.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(
-                        imageVector = FeatherIcons.Settings,
-                        contentDescription = "",
-                        Modifier
-                            .padding(8.dp)
-                            .noRippleClickable {
-                                isSettingsOpen = true
-                            })
+                    IconButton(
+                        onClick = { if (currentPage > 0) currentPage-- },
+                        enabled = currentPage > 0
+                    ) {
+                        Icon(
+                            FeatherIcons.ChevronUp,
+                            contentDescription = "Scroll Up",
+                            modifier = Modifier.size(36.dp),
+                            tint = if (currentPage > 0) Color.Black else Color.Gray // Visual cue for disabled
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    IconButton(
+                        onClick = { if (currentPage < totalPages - 1) currentPage++ },
+                        enabled = currentPage < totalPages - 1
+                    ) {
+                        Icon(
+                            FeatherIcons.ChevronDown,
+                            contentDescription = "Scroll Down",
+                            modifier = Modifier.size(36.dp),
+                            tint = if (currentPage < totalPages - 1) Color.Black else Color.Gray // Visual cue for disabled
+                        )
+                    }
                 }
             }
-            Row(
-                Modifier
-                    .padding(10.dp)
-            ) {
-                BreadCrumb(folderId) { navController.navigate("library" + if (it == null) "" else "?folderId=${it}") }
-            }
-//           I do not know what the idea behind it was
-//            // Add the new "Floating Editor" button here
-//            Text(text = "Floating Editor",
-//                textAlign = TextAlign.Center,
-//                modifier = Modifier
-//                    .noRippleClickable {
-//                        val page = Page(
-//                            notebookId = null,
-//                            parentFolderId = folderId,
-//                            nativeTemplate = appRepository.kvProxy.get(
-//                                APP_SETTINGS_KEY, AppSettings.serializer()
-//                            )?.defaultNativeTemplate ?: "blank"
-//                        )
-//                        appRepository.pageRepository.create(page)
-//                        floatingEditorPageId = page.id
-//                        showFloatingEditor = true
-//                    }
-//                    .padding(10.dp))
-
         }
 
         Column(
             Modifier.padding(10.dp)
         ) {
-
             Spacer(Modifier.height(10.dp))
 
-            // Removed folder UI (Add new folder row and folder list)
             Text(text = "Quick pages")
             Spacer(Modifier.height(10.dp))
 
@@ -180,7 +287,6 @@ fun Library(navController: NavController, folderId: String? = null) {
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Add the "Add quick page" button
                 item {
                     Box(
                         contentAlignment = Alignment.Center,
@@ -206,7 +312,6 @@ fun Library(navController: NavController, folderId: String? = null) {
                         )
                     }
                 }
-                // Render existing pages
                 if (singlePages?.isNotEmpty() == true) {
                     items(singlePages!!.reversed()) { page ->
                         val pageId = page.id
@@ -245,7 +350,6 @@ fun Library(navController: NavController, folderId: String? = null) {
     )
     if (showUserInfo) UserInfoDialog(onClose = { showUserInfo = false })
 
-// Add the FloatingEditorView here
     if (showFloatingEditor && floatingEditorPageId != null) {
         FloatingEditorView(
             navController = navController,
@@ -255,6 +359,115 @@ fun Library(navController: NavController, folderId: String? = null) {
                 floatingEditorPageId = null
             }
         )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun NoteCard(
+    pageId: String,
+    isContextMenuVisible: Boolean,
+    onLongClick: () -> Unit,
+    onDismissContextMenu: () -> Unit,
+    onDeleteRequest: (String) -> Unit,
+    onCardClick: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val db = remember { AppDatabase.getDatabase(context) }
+
+    val summaryLive = remember(pageId) { db.pageSummaryDao().getSummaryLive(pageId) }
+    val summary = summaryLive.observeAsState().value?.summaryText
+
+    var updatedAt by remember(pageId) { mutableStateOf<Long?>(null) }
+    LaunchedEffect(pageId) {
+        val page = db.pageDao().getById(pageId)
+        updatedAt = page?.updatedAt?.time
+    }
+
+    val dateString = remember(updatedAt) {
+        if (updatedAt == null) ""
+        else {
+            val now = System.currentTimeMillis()
+            val millisInDay = 24 * 60 * 60 * 1000
+            val daysAgo = ((now - updatedAt!!) / millisInDay).toInt()
+            when {
+                daysAgo < 1 -> "Today"
+                daysAgo < 10 -> "${daysAgo}d ago"
+                else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(java.util.Date(updatedAt!!))
+            }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+            .combinedClickable(
+                onClick = { onCardClick(pageId) },
+                onLongClick = onLongClick
+            )
+            .padding(8.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Text(
+                text = dateString,
+                style = MaterialTheme.typography.caption.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                color = Color.Gray,
+                modifier = Modifier.align(Alignment.End)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = summary ?: "Summarizing...",
+                style = MaterialTheme.typography.body2,
+                maxLines = 5,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        if (isContextMenuVisible) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+            ) {
+                NoteCardContextMenu(
+                    pageId = pageId,
+                    onDismiss = onDismissContextMenu,
+                    onDelete = onDeleteRequest
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun NoteCardContextMenu(
+    pageId: String,
+    onDismiss: () -> Unit,
+    onDelete: (String) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .background(Color.White, RoundedCornerShape(4.dp))
+            .border(1.dp, Color.Gray, RoundedCornerShape(4.dp))
+    ) {
+        Column(
+            modifier = Modifier
+                .width(IntrinsicSize.Min)
+                .padding(vertical = 4.dp)
+        ) {
+            Text(
+                text = "Delete",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { 
+                        onDelete(pageId)
+                        onDismiss()
+                    }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.body2
+            )
+        }
     }
 }
 

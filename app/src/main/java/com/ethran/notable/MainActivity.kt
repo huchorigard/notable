@@ -58,7 +58,6 @@ import io.shipbook.shipbooksdk.Log
 import io.shipbook.shipbooksdk.ShipBook
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import com.ethran.notable.utils.GemmaModelManager
 import androidx.compose.runtime.setValue
 
 
@@ -128,7 +127,6 @@ class MainActivity : ComponentActivity() {
                         text = {
                             if (isDownloading) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Downloading Gemma model... $downloadProgress%")
                                     Spacer(Modifier.height(16.dp))
                                     LinearProgressIndicator(progress = downloadProgress / 100f)
                                 }
@@ -144,15 +142,7 @@ class MainActivity : ComponentActivity() {
                                     isDownloading = true
                                     downloadFailed = false
                                     scope.launch(Dispatchers.IO) {
-                                        val ok = GemmaModelManager.downloadModel(this@MainActivity) {
-                                            downloadProgress = it
-                                        }
-                                        if (ok) {
-                                            showDownloadDialog = false
-                                        } else {
-                                            isDownloading = false
-                                            downloadFailed = true
-                                        }
+                                        // GemmaModelManager.downloadModel related code removed
                                     }
                                 }) {
                                     Text("Yes, download")
