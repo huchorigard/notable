@@ -582,8 +582,7 @@ User's note:"""
                                             append("This is the note text, careful the text is automatically generated from handwritten note, so some words might be misplaced or incomplete. <note>\n$recognizedText\n</note>\n")
                                         }
                                         android.util.Log.i("OpenAI-AIButton", "Prompt sent to OpenAI: $prompt")
-                                        val apiKey = "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"
-                                        val result = OpenAISummarizer.summarize(apiKey, prompt)
+                                        val result = OpenAISummarizer.summarize(context, prompt)
                                         withContext(Dispatchers.Main) {
                                             aiResponse = result
                                         }

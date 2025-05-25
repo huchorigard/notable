@@ -10,6 +10,8 @@ import android.util.Log
 import com.ethran.notable.db.Tag
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.content.Context
+import com.ethran.notable.security.ApiKeyManager
 
 object OpenAISummarizer {
     private val client = OkHttpClient()
@@ -17,7 +19,12 @@ object OpenAISummarizer {
     private const val MODEL = "gpt-4.1"
     private const val TAG = "OpenAISummarizer"
 
-    suspend fun summarize(apiKey: String, prompt: String): String {
+    suspend fun summarize(context: Context, prompt: String): String {
+        val apiKey = ApiKeyManager.getApiKey(context)
+        if (apiKey == null) {
+            Log.e(TAG, "OpenAI API key not found. Cannot summarize.")
+            return "[Summary error: API key not configured]"
+        }
         return try {
             val json = JSONObject().apply {
                 put("model", MODEL)
@@ -67,11 +74,17 @@ object OpenAISummarizer {
     }
 
     suspend fun suggestTags(
-        apiKey: String,
+        context: Context,
         recognizedText: String,
         userInfo: String,
         availableTags: List<Tag>
     ): List<Tag> {
+        val apiKey = ApiKeyManager.getApiKey(context)
+        if (apiKey == null) {
+            Log.e(TAG, "OpenAI API key not found. Cannot suggest tags.")
+            return emptyList()
+        }
+
         Log.i(TAG, "Starting tag suggestion process")
         try {
             val tagNames = availableTags.map { it.name }

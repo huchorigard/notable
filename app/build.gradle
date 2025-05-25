@@ -40,6 +40,16 @@ android {
         }
     }
 
+    // Read API key from local.properties
+    Properties properties = new Properties()
+    if (rootProject.file("local.properties").exists()) {
+        properties.load(rootProject.file("local.properties").newDataInputStream())
+    } else {
+        // Fallback or error if local.properties is missing in a CI environment, for example
+        // For local development, ensure local.properties exists with the key.
+        println "local.properties not found. OpenAI API key will not be available."
+    }
+
     signingConfigs {
         debug {
             if (System.getenv("STORE_FILE") != null) {
@@ -79,6 +89,7 @@ android {
             buildConfigField("boolean", "IS_NEXT", IS_NEXT)
             buildConfigField "String", "SHIPBOOK_APP_ID", "\"${System.getenv("SHIPBOOK_APP_ID") ?: "default-secret"}\""
             buildConfigField "String", "SHIPBOOK_APP_KEY", "\"${System.getenv("SHIPBOOK_APP_KEY") ?: "default-secret2"}\""
+            buildConfigField "String", "OPENAI_API_KEY", "\"${properties.getProperty("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY_HERE")}\""
             if (System.getenv("STORE_FILE") != null) {
                 signingConfig signingConfigs.release
             }
@@ -89,6 +100,7 @@ android {
             buildConfigField("boolean", "IS_NEXT", IS_NEXT)
             buildConfigField "String", "SHIPBOOK_APP_ID", "\"${System.getenv("SHIPBOOK_APP_ID") ?: "default-secret"}\""
             buildConfigField "String", "SHIPBOOK_APP_KEY", "\"${System.getenv("SHIPBOOK_APP_KEY") ?: "default-secret2"}\""
+            buildConfigField "String", "OPENAI_API_KEY", "\"${properties.getProperty("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY_HERE")}\""
             if (System.getenv("STORE_FILE") != null) {
                 signingConfig signingConfigs.release
             }
@@ -175,6 +187,9 @@ dependencies {
     implementation "androidx.room:room-ktx:$room_version"
     annotationProcessor "androidx.room:room-compiler:$room_version"
     ksp "androidx.room:room-compiler:$room_version"
+
+    // Jetpack Security
+    implementation "androidx.security:security-crypto:1.1.0-alpha06"
 
     // For testing:
     implementation 'androidx.room:room-testing-android:2.7.1'

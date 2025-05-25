@@ -174,12 +174,11 @@ fun EditorView(
 
                         // Process tags with detailed logging
                         Log.i(TAG, "EditorView: Starting tag suggestion for page $currentPageId")
-                        val openAiApiKey = "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"
                         val availableTags = db.tagDao().getAllTags()
                         Log.i(TAG, "EditorView: Found ${availableTags.size} available tags: ${availableTags.map { it.name }}")
                         
                         val suggestedTags = OpenAISummarizer.suggestTags(
-                            apiKey = openAiApiKey,
+                            context = currentContext,
                             recognizedText = recognizedText,
                             userInfo = userInfo,
                             availableTags = availableTags
@@ -344,10 +343,8 @@ $text
 </note>
 """
 
-    // Hardcoded API key (replace with your real key)
-    val openAiApiKey = "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"
     Log.i("EditorView", "Sending prompt to OpenAI: $prompt")
-    return OpenAISummarizer.summarize(openAiApiKey, prompt)
+    return OpenAISummarizer.summarize(context, prompt)
 }
 
 
